@@ -1,3 +1,5 @@
+// src/chat.ts
+
 import { mastra } from './mastra/index';
 import { supportAgentModelSpec } from './mastra/agents/support-agent';
 import * as readline from 'node:readline/promises';
