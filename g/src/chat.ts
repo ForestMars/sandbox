@@ -14,7 +14,16 @@ async function startChat() {
       if (userInput.toLowerCase() === 'exit') break;
 
       try {
-        const result = await agent.generate(userInput);
+        const result = await agent.generate(userInput, {
+        maxSteps: 5,
+        });
+
+        // DEBUG: Log if tools were actually triggered
+        if (result.toolCalls.length > 0) {
+          console.log('--- Tool Call Detected ---');
+          console.log(JSON.stringify(result.toolCalls, null, 2));
+      }
+
         console.log(`\nAgent: ${result.text}\n`);
       } catch (error: any) {
         console.error('\n--- EXECUTION ERROR ---');
