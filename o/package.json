@@ -1,0 +1,9 @@
+{
+  "name": "mastra-support-mvp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@mastra/core": "^0.1.0"
+  }
+}
