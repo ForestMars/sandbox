@@ -14,12 +14,13 @@ async function startChat() {
       if (userInput.toLowerCase() === 'exit') break;
 
       try {
-        // Use generate(), not generateLegacy()
-        const result = await agent.generate(userInput);
+        // We use generateLegacy to avoid the AI SDK version check
+        const result = await agent.generateLegacy(userInput);
         console.log(`\nAgent: ${result.text}\n`);
       } catch (error: any) {
         console.error('\n--- EXECUTION ERROR ---');
-        console.error(error.message || error);
+        // If it fails, we print the FULL error so I can stop guessing
+        console.dir(error, { depth: null });
       }
     }
   } catch (e) {
