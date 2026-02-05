@@ -1,36 +1,42 @@
-// Use curly braces for the named import
-import { mastra } from './mastra/index.js'; 
+import { mastra } from './mastra/index';
 import * as readline from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
 
 const rl = readline.createInterface({ input, output });
 
 async function startChat() {
-  // Debug line: This will tell us if mastra is actually loaded
-  if (!mastra) {
-    console.error('Mastra instance is undefined. Check your export in src/mastra/index.ts');
-    return;
-  }
+  try {
+    // Lookup the agent from the Mastra instance
+    const agent = mastra.getAgent('supportAgent');
+    
+    console.log('--- Support Agent Live ---');
+    console.log('Type your message. Type "exit" to quit.\n');
 
-  const agent = mastra.getAgent('Support Pro');
-  
-  console.log('--- Support Agent Live (Ollama) ---');
-  console.log('Type your message. Type "exit" to quit.\n');
+    while (true) {
+      const userInput = await rl.question('You: ');
 
-  while (true) {
-    const userInput = await rl.question('You: ');
+      if (userInput.toLowerCase() === 'exit') {
+        rl.close();
+        process.exit(0);
+      }
 
-    if (userInput.toLowerCase() === 'exit') {
-      rl.close();
-      break;
+      try {
+        /* * FIX: Using generateLegacy() because @mastra/ollama 
+         * provides a v4-compatible model spec.
+         */
+        const result = await agent.generateLegacy(userInput);
+        
+        console.log(`\nAgent: ${result.text}\n`);
+      } catch (error: any) {
+        console.error('\n--- EXECUTION ERROR ---');
+        console.error(error.message);
+        if (error.stack) {
+          console.error(error.stack);
+        }
+      }
     }
-
-    try {
-      const result = await agent.generate(userInput);
-      console.log(`\nAgent: ${result.text}\n`);
-    } catch (error) {
-      console.error('\nError: Is Ollama running?');
-    }
+  } catch (e) {
+    console.error('CRITICAL INITIALIZATION ERROR:', e);
   }
 }
 

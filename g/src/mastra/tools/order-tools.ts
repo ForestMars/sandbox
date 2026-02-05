@@ -1,4 +1,5 @@
-import { createTool } from '@mastra/core';
+import mastraCore from '@mastra/core/tools';
+const { createTool } = mastraCore;
 import { z } from 'zod';
 
 export const orderLookupTool = createTool({

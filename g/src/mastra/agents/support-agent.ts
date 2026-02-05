@@ -4,14 +4,8 @@ import { orderLookupTool } from '../tools/order-tools';
 
 export const supportAgent = new Agent({
   name: 'SupportBot',
-  instructions: 'You are a helpful support agent. Use tools to verify info.',
-  model: {
-    provider: 'OLLAMA',
-    name: 'gemma3',
-    config: {
-      endpoint: 'http://localhost:11434', // Default Ollama port
-    }
-  },
+  instructions: 'You are a support agent. Use orderLookupTool for order queries.',
+  model: ollama('gemma3'), 
   tools: {
     orderLookupTool,
   },
