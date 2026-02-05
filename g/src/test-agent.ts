@@ -20,7 +20,7 @@ testSupportFlow().catch(console.error);
 
 
 
-// Add this to your test-agent.ts logic
+// Add this to your test-agent.ts logic (in index.ts which doesn't exist.) 
 const result = await supportAgent.generate("Check order #456");
 
 // If using a model that supports tool calling, Mastra handles the handshake.
