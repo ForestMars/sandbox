@@ -1,4 +1,5 @@
 import { Agent } from '@mastra/core/agent';
+import { ollama } from 'ollama-ai-provider';
 import { orderLookupTool } from '../tools/order-tools';
 
 export const supportAgent = new Agent({
