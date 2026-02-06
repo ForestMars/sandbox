@@ -1,7 +1,3 @@
-import { Mastra } from '@mastra/core';
-import { supportAgent } from './agents/support-agent';
-
-// Ensure you are exporting a CONST named 'mastra'
-export const mastra = new Mastra({
-  agents: { supportAgent },
-});
+// mastra/index.ts removed Mastra dependency. The project now imports
+// `supportAgent` directly from `./agents/support-agent`.
+export { supportAgent } from './agents/support-agent';

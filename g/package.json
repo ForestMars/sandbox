@@ -12,7 +12,7 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
-    "@mastra/core": "^1.2.0",
+    
     "ai-sdk-ollama": "^3.4.0",
     "zod": "^3.25.76"
   },

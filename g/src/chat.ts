@@ -1,7 +1,6 @@
 // src/chat.ts
 
-import { mastra } from './mastra/index';
-import { supportAgentModelSpec } from './mastra/agents/support-agent';
+import { supportAgent, supportAgentModelSpec } from './mastra/agents/support-agent';
 import * as readline from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
 
@@ -10,7 +9,7 @@ const rl = readline.createInterface({ input, output });
 const DEBUG = true;
 
 async function startChat() {
-  const agent = mastra.getAgent('supportAgent');
+  const agent = supportAgent;
   console.log(`Loaded model: ${supportAgentModelSpec}\n`);
 
   while (true) {

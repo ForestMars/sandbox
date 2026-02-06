@@ -1,7 +1,7 @@
-import { mastra } from './mastra';
+import { supportAgent } from './mastra/agents/support-agent';
 
 async function testSupportFlow() {
-  const agent = mastra.getAgent('SupportBot');
+  const agent = supportAgent;
 
   console.log('--- Test 1: Tool Usage ---');
   // This should trigger the orderLookup tool
