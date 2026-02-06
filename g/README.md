@@ -54,7 +54,7 @@ This section documents the key differences between the `Mastra` agent `generate(
 - To replace the shim with the Vercel AI SDK:
 
   1. Add `@vercel/ai` (or your SDK of choice) to `package.json`.
-  2. In `src/mastra/agents/support-agent.ts`, call the SDK's `predict`/`generate` with the conversation and instructions.
+  2. In `src/agents/support-agent.ts`, call the SDK's `predict`/`generate` with the conversation and instructions.
   3. Parse the SDK response for tool intents, call `orderLookupTool.execute`, and synthesize the final answer.
 
 If you'd like, I can implement the Vercel AI SDK integration and update `supportAgent.generate()` to call it and fully remove the compatibility shim. Want me to proceed with that now?
