@@ -1,6 +1,6 @@
 // src/chat.ts
 
-import { supportAgent, supportAgentModelSpec } from './mastra/agents/support-agent';
+import { supportAgent, supportAgentModelSpec } from './agents/support-agent';
 import * as readline from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
 
