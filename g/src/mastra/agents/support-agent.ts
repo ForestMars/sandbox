@@ -5,11 +5,8 @@ import { readFileSync } from 'fs';
 import { join } from 'path';
 
 const active_model = 'qwen2.5:7b'
-//const active_model = 'qwen2.5-coder:7b'
-//const active_model = 'mistral:7b-instruct'
 const instructions = readFileSync(join(process.cwd(), 'config', 'agent-instructions.txt'), 'utf-8');
 
-// Allow overriding the model spec via environment variable, otherwise use the configured default.
 export const supportAgentModelSpec = process.env.SUPPORT_AGENT_MODEL || active_model;
 
 export const supportAgent = new Agent({
@@ -19,4 +16,6 @@ export const supportAgent = new Agent({
   tools: {
     orderLookupTool,
   },
+  // Force the agent to continue after tool execution
+  experimental_continueSteps: true,
 });
