@@ -1,4 +1,4 @@
-import { supportAgent } from './mastra/agents/support-agent';
+import { supportAgent } from './agents/support-agent';
 
 async function testSupportFlow() {
   const agent = supportAgent;
