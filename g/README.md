@@ -16,9 +16,7 @@ This section documents the key differences between the `Mastra` agent `generate(
 
   Example:
 
-  ```json
-  {
-    "text": "Order #12345 status: Shipped",
+  ```bash
     "steps": [
       { "finishReason": "tool", "text": "Called tool orderLookupTool", "toolCalls": [{"toolId":"orderLookupTool","result":{"status":"Shipped"}}] }
     ]
@@ -61,13 +59,9 @@ If you'd like, I can implement the Vercel AI SDK integration and update `support
 
 ## Running unit tests
 
-This project includes a small set of unit tests for the persona formatter. Run them with:
+This project includes a small set of unit tests for the persona formatter.
 
-```bash
-npm run test
-```
-
-The tests are lightweight TypeScript files executed via `tsx` and do not require additional test frameworks.
+Install dependencies with Bun and run tests as shown below.
 
 ## Personas
 

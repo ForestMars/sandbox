@@ -1,12 +1,13 @@
 {
   "name": "g",
   "version": "1.0.0",
+  "packageManager": "bun@latest",
   "main": "index.js",
   "scripts": {
     "chat": "tsx src/chat.ts",
     "test": "tsx test/e2e.test.ts",
-    "tests": "vitest",
-    "test:unit": "vitest --run --reporter verbose",
+    "tests": "tsx test/personas.test.ts",
+    "test:unit": "tsx test/personas.test.ts",
     "agent:test": "tsx src/test-agent.ts"
   },
   "keywords": [],
@@ -19,7 +20,6 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
-    "tsx": "^4.21.0",
-    "vitest": "^1.3.4"
+    "tsx": "^4.21.0"
   }
 }
