@@ -2,6 +2,7 @@
 
 import { ollama } from 'ai-sdk-ollama';
 import { orderLookupTool } from '../tools/order-tools';
+import { formatToolResult, type Persona } from '../personas';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
@@ -20,6 +21,13 @@ export const supportAgent = {
     let topText = '';
 
     const prompt = `${instructions}\n\nUser: ${userInput}\nAssistant:`;
+
+    // Determine persona: per-call override, env var, or default 'friendly'
+    let persona: Persona = (_opts && _opts.persona) || (process.env.SUPPORT_AGENT_PERSONA as Persona) || 'friendly';
+    // If the user explicitly asks to "cut the persona" or similar, force raw
+    if (/\b(cut the persona|no persona|raw output|just give me the raw|no persona please)\b/i.test(userInput)) {
+      persona = 'raw';
+    }
 
     // Create the ollama client for the configured model spec
     let client: any;
@@ -70,9 +78,9 @@ export const supportAgent = {
       const toolCall = { toolId: orderLookupTool.id, result: toolResult };
       steps.push({ finishReason: 'tool', text: `Called tool ${orderLookupTool.id}`, toolCalls: [toolCall] });
 
-      // Optionally, form a final reply that includes the tool result. If the SDK produced
-      // a reasonable reply already, prefer that; otherwise synthesize a short reply.
-      topText = sdkText && sdkText.includes(orderId) ? sdkText : `Order ${orderId} status: ${toolResult.status}`;
+      // Use persona formatter to produce the final text. If persona is 'raw', the
+      // formatter will return a JSON/string of the tool result.
+      topText = formatToolResult(persona, orderLookupTool.id, toolResult, userInput);
     } else if (sdkText) {
       steps.push({ finishReason: 'stop', text: sdkText, toolCalls: [] });
       topText = sdkText;
