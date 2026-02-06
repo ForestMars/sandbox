@@ -58,3 +58,17 @@ This section documents the key differences between the `Mastra` agent `generate(
   3. Parse the SDK response for tool intents, call `orderLookupTool.execute`, and synthesize the final answer.
 
 If you'd like, I can implement the Vercel AI SDK integration and update `supportAgent.generate()` to call it and fully remove the compatibility shim. Want me to proceed with that now?
+
+## Running unit tests
+
+This project includes a small set of unit tests for the persona formatter. Run them with:
+
+```bash
+npm run test
+```
+
+The tests are lightweight TypeScript files executed via `tsx` and do not require additional test frameworks.
+
+## Personas
+
+Personas are implemented in `src/personas/index.ts`. They are intentionally tool-agnostic — the agent passes a generic `ToolMeta` object (`{ id, description }`) and the persona formatter summarizes results generically. To add a new persona, update `src/personas/index.ts` and ensure it handles generic `tool` metadata and arbitrary result shapes.
