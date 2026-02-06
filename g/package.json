@@ -6,9 +6,9 @@
   "scripts": {
     "chat": "bun src/chat.ts",
     "test": "bun test --grep e2e",
-    "tests": "bun test",
+    "tests": "bun test --grep unit",
     "test:unit": "bun test --grep unit",
-    "agent:test": "bun src/test-agent.ts"
+    "test:agent": "bun src/test-agent.ts"
   },
   "keywords": [],
   "author": "",

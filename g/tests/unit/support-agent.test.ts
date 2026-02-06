@@ -1,5 +1,5 @@
 import { test, expect } from 'bun:test';
-import { supportAgent } from '../src/agents/support-agent';
+import { supportAgent } from '../../src/agents/support-agent';
 
 // Mock client that returns an object with `text` field
 function makeMockClient(returnText: string) {

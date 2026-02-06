@@ -1,5 +1,5 @@
 import { test, expect } from 'bun:test';
-import { formatToolResult } from '../src/personas';
+import { formatToolResult } from '../../src/personas';
 
 test('friendly persona summarizes order tool result', () => {
   const friendly = formatToolResult('friendly', { id: 'orderLookupTool', description: 'Lookup order' }, { status: 'Shipped', deliveryDate: '2026-02-10' }, '#12345');

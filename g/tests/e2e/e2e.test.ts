@@ -1,5 +1,5 @@
 import { test, expect } from 'bun:test';
-import { supportAgent } from '../src/agents/support-agent';
+import { supportAgent } from '../../src/agents/support-agent';
 
 test('e2e: supportAgent order lookup', async () => {
   const res = await supportAgent.generate('Please check order #12345');
