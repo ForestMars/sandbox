@@ -1,11 +1,42 @@
 export type Persona = 'friendly' | 'formal' | 'raw' | 'none';
 
+export type ToolMeta = {
+  id: string;
+  description?: string;
+  // future fields: type, schema, examples
+};
+
 function humanizeToolId(id: string) {
   return id.replace(/([A-Z])/g, ' $1').replace(/[-_]/g, ' ').trim();
 }
 
-export function formatToolResult(persona: Persona, toolId: string, toolResult: any, userInput?: string) {
-  const humanTool = humanizeToolId(toolId);
+function summarizeResult(toolResult: any) {
+  if (toolResult == null) return 'No result.';
+  if (typeof toolResult === 'string') return toolResult;
+  if (typeof toolResult === 'object') {
+    // Common pattern: status + deliveryDate
+    if ('status' in toolResult) {
+      const status = toolResult.status;
+      const when = toolResult.deliveryDate ? ` (delivery: ${toolResult.deliveryDate})` : '';
+      return `${status}${when}`;
+    }
+    // If it's a simple map with few keys, make a concise summary
+    const keys = Object.keys(toolResult);
+    if (keys.length <= 3) {
+      return keys.map(k => `${k}: ${JSON.stringify(toolResult[k])}`).join(', ');
+    }
+    // Fallback to JSON
+    try {
+      return JSON.stringify(toolResult);
+    } catch (e) {
+      return String(toolResult);
+    }
+  }
+  return String(toolResult);
+}
+
+export function formatToolResult(persona: Persona, tool: ToolMeta, toolResult: any, userInput?: string) {
+  const humanTool = humanizeToolId(tool.id || tool.description || 'tool');
 
   // Raw persona returns JSON/stringified payload
   if (persona === 'raw' || persona === 'none') {
@@ -16,30 +47,18 @@ export function formatToolResult(persona: Persona, toolId: string, toolResult: a
     }
   }
 
-  // Friendly persona — conversational
+  const summary = summarizeResult(toolResult);
+
   if (persona === 'friendly') {
-    if (toolResult && toolResult.status) {
-      const when = toolResult.deliveryDate ? ` It was ${toolResult.deliveryDate}.` : '';
-      return `I have your answer. The ${humanTool} you asked about${userInput ? ` (${userInput})` : ''} shows: ${toolResult.status}.${when}`;
-    }
-    return `I have your answer — here it is: ${typeof toolResult === 'string' ? toolResult : JSON.stringify(toolResult)}`;
+    return `I have your answer. The ${humanTool}${userInput ? ` (${userInput})` : ''} shows: ${summary}`;
   }
 
-  // Formal persona — concise, slightly more formal
   if (persona === 'formal') {
-    if (toolResult && toolResult.status) {
-      const when = toolResult.deliveryDate ? ` Delivery date: ${toolResult.deliveryDate}.` : '';
-      return `Result for ${humanTool}: ${toolResult.status}.${when}`;
-    }
-    return `Result: ${typeof toolResult === 'string' ? toolResult : JSON.stringify(toolResult)}`;
+    return `Result for ${humanTool}: ${summary}`;
   }
 
   // Default fallback
-  try {
-    return typeof toolResult === 'string' ? toolResult : JSON.stringify(toolResult);
-  } catch (e) {
-    return String(toolResult);
-  }
+  return summary;
 }
 
 export default { formatToolResult };

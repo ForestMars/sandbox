@@ -37,15 +37,26 @@ export const supportAgent = {
       client = null;
     }
 
-    // Helper to extract text from various SDK response shapes
+    // Helper to extract text from various SDK response shapes @TODO: move to a shared utility if we end up with more agents and/or more SDKs
     const extractText = (resp: any) => {
       if (!resp) return null;
       if (typeof resp === 'string') return resp;
+
+      // Common when using Ollama directly with generate() - it returns { text, ...metadata }
       if (resp.text) return resp.text;
+      
+      // Common in LangChain or certain AWS Bedrock abstractions
       if (resp.output && Array.isArray(resp.output) && resp.output[0]?.content) return resp.output[0].content;
+
+      // Possibly not needed (outputs, not output) but just in case
       if (resp.outputs && Array.isArray(resp.outputs) && resp.outputs[0]?.content) return resp.outputs[0].content;
+      
+      // classic OpenAI Chat Completions format (also used by Mistral and Groq).
       if (resp.choices && Array.isArray(resp.choices) && resp.choices[0]?.message?.content) return resp.choices[0].message.content;
+      
+      // OpenAI Legacy format (from the gpt-3.5-turbo-instruct days).
       if (resp.choices && Array.isArray(resp.choices) && resp.choices[0]?.text) return resp.choices[0].text;
+      
       return JSON.stringify(resp);
     };
 
@@ -78,9 +89,9 @@ export const supportAgent = {
       const toolCall = { toolId: orderLookupTool.id, result: toolResult };
       steps.push({ finishReason: 'tool', text: `Called tool ${orderLookupTool.id}`, toolCalls: [toolCall] });
 
-      // Use persona formatter to produce the final text. If persona is 'raw', the
-      // formatter will return a JSON/string of the tool result.
-      topText = formatToolResult(persona, orderLookupTool.id, toolResult, userInput);
+      // Pass generic tool metadata to the persona formatter so personas remain
+      // decoupled from specific tool internals and can handle future tools.
+      topText = formatToolResult(persona, { id: orderLookupTool.id, description: orderLookupTool.description }, toolResult, userInput);
     } else if (sdkText) {
       steps.push({ finishReason: 'stop', text: sdkText, toolCalls: [] });
       topText = sdkText;
