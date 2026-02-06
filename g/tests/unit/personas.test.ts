@@ -1,0 +1,24 @@
+import { test, expect } from 'bun:test';
+import { formatToolResult } from '../../src/personas';
+
+test('friendly persona summarizes order tool result', () => {
+  const friendly = formatToolResult('friendly', { id: 'orderLookupTool', description: 'Lookup order' }, { status: 'Shipped', deliveryDate: '2026-02-10' }, '#12345');
+  expect(friendly).toContain('I have your answer');
+  expect(friendly).toContain('Shipped');
+});
+
+test('formal persona produces concise summary', () => {
+  const formal = formatToolResult('formal', { id: 'orderLookupTool' }, { status: 'Processing' }, '#67890');
+  expect(formal).toContain('Result for');
+  expect(formal).toContain('Processing');
+});
+
+test('raw persona returns raw data', () => {
+  const raw = formatToolResult('raw', { id: 'orderLookupTool' }, { status: 'Not Found' }, '#999');
+  expect(raw).toSatisfy((v: string) => v.includes('Not Found') || v.includes('"status"'));
+});
+
+test('generic object summarization', () => {
+  const obj = formatToolResult('friendly', { id: 'ragTool' }, { title: 'FAQ', excerpt: 'Answer here' }, 'tell me about X');
+  expect(obj).toSatisfy((v: string) => v.includes('FAQ') || v.includes('excerpt'));
+});

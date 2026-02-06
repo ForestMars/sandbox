@@ -22,6 +22,7 @@ async function startChat() {
         toolChoice: 'auto',
       });
 
+      // This was mostly for framework debugging, not so much needed after switching to library.
       if (DEBUG) {
         console.log(`\n[DEBUG] Steps taken: ${result.steps.length} / maxSteps: 5`);
         console.log(`[DEBUG] Overall finishReason: ${result.finishReason}`);
@@ -42,6 +43,7 @@ async function startChat() {
         });
         
         console.log(`\n  Response message chain:`);
+        
         result.response?.messages?.forEach((msg, i) => {
           const contentType = msg.content?.[0]?.type || 'unknown';
           console.log(`    ${i}. role=${msg.role}, contentType=${contentType}`);

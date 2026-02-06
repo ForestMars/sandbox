@@ -16,9 +16,7 @@ This section documents the key differences between the `Mastra` agent `generate(
 
   Example:
 
-  ```json
-  {
-    "text": "Order #12345 status: Shipped",
+  ```bash
     "steps": [
       { "finishReason": "tool", "text": "Called tool orderLookupTool", "toolCalls": [{"toolId":"orderLookupTool","result":{"status":"Shipped"}}] }
     ]
@@ -58,3 +56,13 @@ This section documents the key differences between the `Mastra` agent `generate(
   3. Parse the SDK response for tool intents, call `orderLookupTool.execute`, and synthesize the final answer.
 
 If you'd like, I can implement the Vercel AI SDK integration and update `supportAgent.generate()` to call it and fully remove the compatibility shim. Want me to proceed with that now?
+
+## Running unit tests
+
+This project includes a small set of unit tests for the persona formatter.
+
+Install dependencies with Bun and run tests as shown below.
+
+## Personas
+
+Personas are implemented in `src/personas/index.ts`. They are intentionally tool-agnostic — the agent passes a generic `ToolMeta` object (`{ id, description }`) and the persona formatter summarizes results generically. To add a new persona, update `src/personas/index.ts` and ensure it handles generic `tool` metadata and arbitrary result shapes.
