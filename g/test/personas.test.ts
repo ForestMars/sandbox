@@ -1,26 +1,24 @@
-import assert from 'node:assert';
+import { test, expect } from 'bun:test';
 import { formatToolResult } from '../src/personas';
 
-function run() {
-  // Friendly persona with typical order tool result
-  const friendly = formatToolResult('friendly' as any, { id: 'orderLookupTool', description: 'Lookup order' }, { status: 'Shipped', deliveryDate: '2026-02-10' }, '#12345');
-  assert.ok(friendly.includes('I have your answer'), 'friendly should use conversational prefix');
-  assert.ok(friendly.includes('Shipped'), 'friendly should include status');
+test('friendly persona summarizes order tool result', () => {
+  const friendly = formatToolResult('friendly', { id: 'orderLookupTool', description: 'Lookup order' }, { status: 'Shipped', deliveryDate: '2026-02-10' }, '#12345');
+  expect(friendly).toContain('I have your answer');
+  expect(friendly).toContain('Shipped');
+});
 
-  // Formal persona
-  const formal = formatToolResult('formal' as any, { id: 'orderLookupTool' }, { status: 'Processing' }, '#67890');
-  assert.ok(formal.includes('Result for'), 'formal should use formal prefix');
-  assert.ok(formal.includes('Processing'), 'formal should include status');
+test('formal persona produces concise summary', () => {
+  const formal = formatToolResult('formal', { id: 'orderLookupTool' }, { status: 'Processing' }, '#67890');
+  expect(formal).toContain('Result for');
+  expect(formal).toContain('Processing');
+});
 
-  // Raw persona returns JSON
-  const raw = formatToolResult('raw' as any, { id: 'orderLookupTool' }, { status: 'Not Found' }, '#999');
-  assert.ok(raw.includes('Not Found') || raw.includes('"status"'), 'raw should include raw data');
+test('raw persona returns raw data', () => {
+  const raw = formatToolResult('raw', { id: 'orderLookupTool' }, { status: 'Not Found' }, '#999');
+  expect(raw).toSatisfy((v: string) => v.includes('Not Found') || v.includes('"status"'));
+});
 
-  // Generic object summarization
-  const obj = formatToolResult('friendly' as any, { id: 'ragTool' }, { title: 'FAQ', excerpt: 'Answer here' }, 'tell me about X');
-  assert.ok(obj.includes('FAQ') || obj.includes('excerpt'), 'should summarize small objects');
-
-  console.log('All persona tests passed');
-}
-
-run();
+test('generic object summarization', () => {
+  const obj = formatToolResult('friendly', { id: 'ragTool' }, { title: 'FAQ', excerpt: 'Answer here' }, 'tell me about X');
+  expect(obj).toSatisfy((v: string) => v.includes('FAQ') || v.includes('excerpt'));
+});

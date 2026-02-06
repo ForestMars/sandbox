@@ -4,11 +4,11 @@
   "packageManager": "bun@latest",
   "main": "index.js",
   "scripts": {
-    "chat": "tsx src/chat.ts",
-    "test": "tsx test/e2e.test.ts",
-    "tests": "tsx test/personas.test.ts",
-    "test:unit": "tsx test/personas.test.ts",
-    "agent:test": "tsx src/test-agent.ts"
+    "chat": "bun src/chat.ts",
+    "test": "bun test --grep e2e",
+    "tests": "bun test",
+    "test:unit": "bun test --grep unit",
+    "agent:test": "bun src/test-agent.ts"
   },
   "keywords": [],
   "author": "",

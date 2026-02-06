@@ -29,12 +29,14 @@ export const supportAgent = {
       persona = 'raw';
     }
 
-    // Create the ollama client for the configured model spec
-    let client: any;
-    try {
-      client = ollama(supportAgentModelSpec);
-    } catch (e) {
-      client = null;
+    // Allow injecting a mock client via opts for testing; otherwise create the ollama client
+    let client: any = _opts?.client ?? null;
+    if (!client) {
+      try {
+        client = ollama(supportAgentModelSpec);
+      } catch (e) {
+        client = null;
+      }
     }
 
     // Helper to extract text from various SDK response shapes @TODO: move to a shared utility if we end up with more agents and/or more SDKs
