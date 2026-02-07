@@ -1,20 +1,43 @@
 // src/tools/order-tools.ts
 
+import { Tool } from '../types/agent-types';
+
+/**
+ * Order status information
+ */
+export interface OrderStatus {
+  status: 'Shipped' | 'Processing' | 'Not Found';
+  deliveryDate: string;
+}
+
+/**
+ * Parameters for order lookup
+ */
+export interface OrderLookupParams {
+  orderId: string;
+}
+
 const DEBUG = true;
 
-export const orderLookupTool = {
+export const orderLookupTool: Tool<OrderLookupParams, OrderStatus> = {
   id: 'order_lookup',
-  description: 'Use this tool to look up order status by ID.',
-  execute: async ({ orderId }: { orderId: string }) => {
+  name: 'Order Lookup',
+  description: 'Look up order status by order ID',
+  
+  async execute({ orderId }: OrderLookupParams): Promise<OrderStatus> {
     if (DEBUG) console.log(`[TOOL] Looking up: ${orderId}`);
 
-    const mockOrders: Record<string, any> = {
+    const mockOrders: Record<string, OrderStatus> = {
       '12345': { status: 'Shipped', deliveryDate: '2026-02-10' },
-      '#12345': { status: 'Shipped', deliveryDate: '2026-02-10' },
-      '#67890': { status: 'Processing', deliveryDate: 'TBD' },
+      '67890': { status: 'Processing', deliveryDate: 'TBD' },
     };
 
-    const result = mockOrders[orderId] || { status: 'Not Found', deliveryDate: 'N/A' };
+    // Normalize order ID by removing # prefix if present
+    const normalizedId = orderId.replace(/^#/, '');
+    const result: OrderStatus = mockOrders[normalizedId] || { 
+      status: 'Not Found', 
+      deliveryDate: 'N/A' 
+    };
 
     if (DEBUG) console.log(`[TOOL] Returning:`, result);
 

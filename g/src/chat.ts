@@ -3,13 +3,13 @@
 import { supportAgent, supportAgentModelSpec } from './agents/support-agent';
 import * as readline from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
+import type { AgentStep } from './types/agent-types';
 
 const rl = readline.createInterface({ input, output });
 
 const DEBUG = true;
 
 async function startChat() {
-  const agent = supportAgent;
   console.log(`Loaded model: ${supportAgentModelSpec}\n`);
 
   while (true) {
@@ -17,50 +17,51 @@ async function startChat() {
     if (userInput.toLowerCase() === 'exit') break;
 
     try {
-      const result = await agent.generate(userInput, { 
-        maxSteps: 5, 
-        toolChoice: 'auto',
-      });
+      const steps: AgentStep[] = [];
+      let finalText = '';
+
+      // Consume the generator - supportAgent is now a function, not an object
+      for await (const step of supportAgent(userInput)) {
+        steps.push(step);
+
+        if (DEBUG) {
+          console.log(`[${step.type.toUpperCase()}]`, formatStep(step));
+        }
+
+        if (step.type === 'final') {
+          finalText = step.text;
+        }
+      }
+
+      console.log(`\nAgent: ${finalText}\n`);
 
       if (DEBUG) {
-        console.log(`\n[DEBUG] Steps taken: ${result.steps.length} / maxSteps: 5`);
-        console.log(`[DEBUG] Overall finishReason: ${result.finishReason}`);
-        console.log(`[DEBUG] Response messages count: ${result.response?.messages?.length || 0}`);
-        
-        result.steps.forEach((step, i) => {
-          console.log(`\n  Step ${i}:`);
-          console.log(`    finishReason: ${step.finishReason}`);
-          console.log(`    text: ${step.text ? `"${step.text}"` : 'NONE'}`);
-          console.log(`    toolCalls: ${step.toolCalls?.length || 0}`);
-          console.log(`    toolResults: ${step.toolResults?.length || 0}`);
-          
-          if (step.toolResults?.length > 0) {
-            step.toolResults.forEach(tr => {
-              console.log(`      Result: ${JSON.stringify(tr.payload.result)}`);
-            });
-          }
-        });
-        
-        console.log(`\n  Response message chain:`);
-        result.response?.messages?.forEach((msg, i) => {
-          const contentType = msg.content?.[0]?.type || 'unknown';
-          console.log(`    ${i}. role=${msg.role}, contentType=${contentType}`);
-        });
-        
-        console.log(`\n  Why only ${result.steps.length} step(s)?`);
-        console.log(`    - Last step finishReason: ${result.steps[result.steps.length - 1]?.finishReason}`);
-        console.log(`    - Tool results present: ${result.toolResults?.length > 0 ? 'YES' : 'NO'}`);
-        console.log(`    - reliable_tool_calling: ${result.providerMetadata?.ollama?.reliable_tool_calling}\n`);
+        console.log(`[DEBUG] Total steps: ${steps.length}`);
+        console.log(`[DEBUG] Step sequence: ${steps.map(s => s.type).join(' → ')}\n`);
       }
 
-      if (result.text) {
-        console.log(`Agent: ${result.text}\n`);
-      } else {
-        console.log('⚠️  No response generated\n');
-      }
-    } catch (error: any) {
-      console.error('Error:', error.message);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error('Error:', errorMessage);
     }
+  }
+}
+
+/**
+ * Format a step for debug output
+ */
+function formatStep(step: AgentStep): string {
+  switch (step.type) {
+    case 'thinking':
+      return step.message;
+    case 'llm_response':
+      return step.text.substring(0, 100) + (step.text.length > 100 ? '...' : '');
+    case 'tool_call':
+      return `${step.toolName}(${JSON.stringify(step.parameters)})`;
+    case 'tool_result':
+      return step.error || JSON.stringify(step.result);
+    case 'final':
+      return step.text;
   }
 }
 
