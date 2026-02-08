@@ -17,6 +17,7 @@ const instructions = readFileSync(
   join(process.cwd(), 'config', 'agent-instructions.txt'),
   'utf-8'
 );
+const DEBUG = process.env.DEBUG === 'true';
 
 /**
  * LLM response structure
