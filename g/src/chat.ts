@@ -23,7 +23,8 @@ async function startChat() {
       // Consume the generator - supportAgent is now a function, not an object
       for await (const step of supportAgent(userInput)) {
         steps.push(step);
-
+        console.log(`\n[${step.type.toUpperCase()}]`, formatStep(step));
+        
         if (DEBUG) {
           console.log(`[${step.type.toUpperCase()}]`, formatStep(step));
         }
