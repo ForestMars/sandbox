@@ -4,8 +4,8 @@
   "main": "index.js",
   "scripts": {
     "chat": "bun src/chat.ts",
-    "test": "bun test src/e2e/e2e-test.ts",
-    "agent:test": "bun src/test-agent.ts"
+    "test": "bun test tests/e2e/e2e-test.ts",
+    "agent:test": "bun tests/test-agent.ts"
   },
   "keywords": [],
   "author": "",

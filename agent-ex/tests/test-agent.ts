@@ -1,31 +1,41 @@
-import { supportAgent } from './agents/support-agent';
+import { supportAgent } from '../src/agents/support-agent';
 
-async function testSupportFlow() {
-  const agent = supportAgent;
+// Focused smoke test: confirm requesting invoice #12345 returns a natural-language
+// response (not a raw tool-call JSON) and contains expected information from the
+// mocked order lookup (e.g. "Shipped"). This file is intentionally minimal so
+// `bun run agent:test` / `npm run agent:test` runs quickly.
 
-  console.log('--- Test 1: Tool Usage ---');
-  // This should trigger the orderLookup tool
-  const res1 = await agent.generate("I need the status of order #999");
-  console.log('User: I need the status of order #999');
-  console.log('Agent:', res1.text);
+async function runSmokeTest() {
+  const input = 'We need to know the status of invoice #12345';
+  const gen = supportAgent(input);
 
-  console.log('\n--- Test 2: General Inquiry ---');
-  // This should NOT trigger a tool (just conversational)
-  const res2 = await agent.generate("What is your name?");
-  console.log('User: What is your name?');
-  console.log('Agent:', res2.text);
+  let finalText = '';
+  for await (const step of gen) {
+    if (step.type === 'final') {
+      finalText = (step as any).text || '';
+      break;
+    }
+  }
+
+  console.log('User:', input);
+  console.log('Agent Final:', finalText);
+
+  // Validate the final response is natural language and contains expected info
+  const looksLikeToolJson = /^\s*\{\s*"tool"/i.test(finalText.trim());
+  const containsExpected = /Shipped|Processing|Not Found|NotFound|deliveryDate|12345/i.test(finalText);
+
+  if (looksLikeToolJson) {
+    console.error('SMOKE TEST FAIL: agent returned raw tool-call JSON instead of a natural-language response');
+    process.exit(2);
+  }
+
+  if (!containsExpected) {
+    console.error('SMOKE TEST FAIL: final response did not contain expected order information');
+    process.exit(3);
+  }
+
+  console.log('SMOKE TEST PASS');
+  process.exit(0);
 }
 
-testSupportFlow().catch(console.error);
-
-
-
-// Add this to your test-agent.ts logic (in index.ts which doesn't exist.) 
-const result = await supportAgent.generate("Check order #456");
-
-// If using a model that supports tool calling, Mastra handles the handshake.
-// Check if the agent actually called the tool:
-const toolCalled = result.steps.some(s => s.type === 'tool-call');
-
-console.log(`Did the local model use the tool? ${toolCalled ? '✅ Yes' : '❌ No'}`);
-console.log('Response:', result.text);
+runSmokeTest().catch(e => { console.error(e); process.exit(1); });
