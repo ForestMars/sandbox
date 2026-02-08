@@ -20,7 +20,7 @@ export interface OrderLookupParams {
 const DEBUG = true;
 
 export const orderLookupTool: Tool<OrderLookupParams, OrderStatus> = {
-  id: 'order_lookup',
+  id: 'invoice-status-lookup',
   name: 'Order Lookup',
   description: 'Look up order status by order ID',
   
