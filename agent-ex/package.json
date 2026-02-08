@@ -4,7 +4,7 @@
   "main": "index.js",
   "scripts": {
     "chat": "tsx src/chat.ts",
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "tsx src/e2e/e2e-test.ts",
     "agent:test": "tsx src/test-agent.ts"
   },
   "keywords": [],
