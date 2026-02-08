@@ -5,27 +5,25 @@ async function testSupportFlow() {
 
   console.log('--- Test 1: Tool Usage ---');
   // This should trigger the orderLookup tool
-  const res1 = await agent.generate("I need the status of order #999");
+  const gen1 = agent("I need the status of order #999");
+  let res1Text = '';
+  const res1Steps: any[] = [];
+  for await (const step of gen1) {
+    res1Steps.push(step);
+    if (step.type === 'final') res1Text = (step as any).text;
+  }
   console.log('User: I need the status of order #999');
-  console.log('Agent:', res1.text);
+  console.log('Agent:', res1Text);
 
   console.log('\n--- Test 2: General Inquiry ---');
   // This should NOT trigger a tool (just conversational)
-  const res2 = await agent.generate("What is your name?");
+  const gen2 = agent("What is your name?");
+  let res2Text = '';
+  for await (const step of gen2) {
+    if (step.type === 'final') res2Text = (step as any).text;
+  }
   console.log('User: What is your name?');
-  console.log('Agent:', res2.text);
+  console.log('Agent:', res2Text);
 }
 
 testSupportFlow().catch(console.error);
-
-
-
-// Add this to your test-agent.ts logic (in index.ts which doesn't exist.) 
-const result = await supportAgent.generate("Check order #456");
-
-// If using a model that supports tool calling, Mastra handles the handshake.
-// Check if the agent actually called the tool:
-const toolCalled = result.steps.some(s => s.type === 'tool-call');
-
-console.log(`Did the local model use the tool? ${toolCalled ? '✅ Yes' : '❌ No'}`);
-console.log('Response:', result.text);
