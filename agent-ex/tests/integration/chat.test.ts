@@ -6,11 +6,11 @@
 
 import { test, expect, spyOn, describe, beforeEach, afterEach } from "bun:test";
 import * as readline from 'node:readline/promises';
-import { supportAgent } from './agents/support-agent';
+import { supportAgent } from '@/agents/support-agent';
 
 // We need to mock the supportAgent module
 // In Bun, we can mock the exported function
-const mockAgent = spyOn(require('./agents/support-agent'), 'supportAgent');
+const mockAgent = spyOn(require('@/agents/support-agent'), 'supportAgent');
 
 describe('Chat CLI Logic', () => {
   let mockQuestion: any;
