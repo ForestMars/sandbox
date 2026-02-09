@@ -92,3 +92,24 @@ export interface AgentConfig {
   instructions: string;
   tools: Tool[];
 }
+/**
+ * Events that can occur in an agent session
+ * Used for tracking state changes over time
+ */
+type AgentEvent = 
+  | { type: 'USER_UPDATE', payload: string, timestamp: number }
+  | { type: 'ORACLE_DELETE', payload: { id: string }, timestamp: number }
+  | { type: 'ADMIN_RESTORE', payload: { metadata: any }, timestamp: number };
+
+/** Agent session state
+ */
+export
+interface AgentSession {
+  sessionId: string;
+  events: AgentEvent[];
+  // This is our "World Model" - the current state of the subnet
+  worldModel: {
+    unresolvedEntities: Record<string, any>;
+    lookupFailures: string[]; // Track IDs that "failed" the Control Plane
+  };
+}
