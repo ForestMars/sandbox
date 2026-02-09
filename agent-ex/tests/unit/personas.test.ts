@@ -1,3 +1,5 @@
+// agent-ex/tests/unit/personas.test.ts
+
 import { test, expect } from 'bun:test';
 import { formatToolResult } from '../../src/personas';
 

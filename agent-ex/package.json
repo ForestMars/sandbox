@@ -5,6 +5,8 @@
   "scripts": {
     "chat": "bun src/chat.ts",
     "test": "bun test ./tests/e2e/e2e.test.ts",
+    "tests": "bun test ./tests/**/*.test.ts",
+    "test:cov": "bun test --coverage ./src/**/*.test.ts ./tests/**/*.test.ts",
     "agent:test": "bun tests/test-agent.ts"
   },
   "keywords": [],
