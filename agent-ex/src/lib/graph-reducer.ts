@@ -3,8 +3,6 @@ import type { AgentEvent } from '@/types/agent-types';
 
 export function rebuildGraph(history: AgentEvent[]): MemoryGraph {
   const graph = new MemoryGraph();
-  
-  // Sort events to ensure we project state in the correct chronological order
   const events = [...history].sort((a, b) => a.timestamp - b.timestamp);
 
   for (const event of events) {
@@ -12,36 +10,46 @@ export function rebuildGraph(history: AgentEvent[]): MemoryGraph {
       case 'USER_UPDATE':
         const text = event.payload.text;
         
-        // 1. PROACTIVE EXTRACTION
-        // Scan for ID patterns (e.g., #999 or 12345) to create the node immediately.
-        // This ensures the graph isn't empty when the LLM gets its first prompt.
-        const idMatch = text.match(/#?(\d{3,})/);
-        if (idMatch) {
-          const extractedId = idMatch[1];
-          graph.setNode(extractedId, 'ORDER', { 
-            status: 'PENDING_LOOKUP' 
-          });
+        // 1. Ensure a Root Issue exists
+        let activeIssue = graph.findActiveIssue();
+        if (!activeIssue) {
+          const issueId = "current_session_issue";
+          graph.setNode(issueId, 'ISSUE', { status: 'OPEN', resolution: 'UNRESOLVED' });
+          activeIssue = graph.nodes.get(issueId);
         }
 
-        // 2. CONTEXTUAL LINKING
-        // Find the "Active" node we are currently talking about.
-        const activeOrder = graph.findMostRecentNode('ORDER');
+        // 2. Extract Entities and PARENT them to the Issue
+        const idMatch = text.match(/#?(\d{3,})/);
+        if (idMatch) {
+          const orderId = idMatch[1];
+          graph.setNode(orderId, 'ORDER', { id: orderId });
+          graph.addEdge(activeIssue!.id, orderId);
+        }
 
-        if (activeOrder) {
-          const currentDesc = activeOrder.properties.description || '';
-          graph.setNode(activeOrder.id, 'ORDER', {
-            description: `${currentDesc} ${text}`.trim()
-          });
+        // 3. Update the Issue's working context (Sticky Memory)
+        const currentContext = activeIssue!.properties.context || "";
+        graph.setNode(activeIssue!.id, 'ISSUE', {
+          context: `${currentContext} | User added: "${text}"`.trim()
+        });
+
+        // 4. Handle Closing Signal
+        if (text.toLowerCase().match(/(thank you|thanks|resolved|that is all)/)) {
+          graph.setNode(activeIssue!.id, 'ISSUE', { status: 'CLOSED', resolution: 'SATISFIED' });
         }
         break;
 
       case 'TOOL_RESULT':
-        // Update the graph with hard data from the Oracle database
         const { orderId, result } = event.payload;
-        graph.setNode(orderId, 'ORDER', {
-          ...result,
-          // Explicitly carry over properties the tool might return (e.g. status)
-        });
+        graph.setNode(orderId, 'ORDER', { ...result });
+        
+        // If the tool fails, update the parent issue to reflect the conflict
+        const issue = graph.findActiveIssue();
+        if (issue && result.status === "Not Found") {
+          graph.setNode(issue.id, 'ISSUE', { 
+            resolution: 'CONFLICT_WAITING_FOR_USER_INFO',
+            failedAttemptId: orderId 
+          });
+        }
         break;
     }
   }

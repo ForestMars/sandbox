@@ -33,6 +33,19 @@ const supportAgentConfig: AgentConfig = {
   tools: [orderLookupTool]
 };
 
+async function loadSkill(fileName: string): Promise<string> {
+  try {
+    // Use the __dirname we already have to build an absolute path
+    const skillPath = join(__dirname, 'skills', fileName);
+    const content = readFileSync(skillPath, 'utf-8');
+    console.log(`[DEBUG] Successfully loaded skill: ${fileName}`);
+    return content;
+  } catch (error) {
+    console.error(`[ERROR] Failed to load skill at ${join(__dirname, 'skills', fileName)}`);
+    return ""; 
+  }
+}
+
 /**
  * Generator-based support agent using Global Workspace Theory.
  */
@@ -67,6 +80,11 @@ export async function* supportAgent(
     timestamp: Date.now(), 
     message: 'Consulting internal knowledge graph...' 
   };
+
+  let specializedSkills = "";
+  if (worldModel.serialize().includes('UNRESOLVED_CONFLICT')) {
+    specializedSkills = await loadSkill('entity-resolution.md');
+  }
 
   // 4. INFERENCE: Call LLM with instructions and the serialized Graph State
   const response = await generateText({
