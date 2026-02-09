@@ -12,11 +12,13 @@ function makeMockClient(returnText: string) {
     modelId: 'mock-model',
     doGenerate: async () => ({
       text: returnText,
+      // The SDK needs this content array to filter for tool calls internally
+      content: [{ type: 'text', text: returnText }], 
       finishReason: 'stop' as const,
       usage: { promptTokens: 0, completionTokens: 0 },
       rawCall: { rawPrompt: null, rawSettings: {} },
     }),
-  } as any; // Cast as any to bypass the deep internal spec for the unit test
+  } as any;
 }
 
 test('agent calls orderLookupTool when LLM triggers tool path', async () => {
