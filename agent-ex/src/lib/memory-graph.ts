@@ -1,3 +1,8 @@
+/**
+ * @file memory-graph.ts
+ * @description In-Memory Graph Representation for Agent's World Model.
+ */
+
 export interface GraphNode {
   id: string;
   type: 'ISSUE' | 'ORDER' | 'USER_METADATA';
@@ -39,12 +44,25 @@ export class MemoryGraph {
   }
 
   serialize(): string {
-    if (this.nodes.size === 0) return "WORLD_STATE: Initialized. No active issues.";
-    let out = "### CURRENT_WORLD_MODEL (ISSUE-ROOTED)\n";
-    for (const node of this.nodes.values()) {
-      out += `[${node.type}] ${node.id}: ${JSON.stringify(node.properties)}\n`;
-      if (node.edges.length > 0) out += `  └─ Links to: ${node.edges.join(', ')}\n`;
+    let out = "### KNOWLEDGE_GRAPH_STATE\n";
+    const nodes = Array.from(this.nodes.values());
+
+    // Separate active issues from archived history
+    const activeNodes = nodes.filter(n => n.properties.resolutionState !== 'RESOLVED');
+    const archivedNodes = nodes.filter(n => n.properties.resolutionState === 'RESOLVED');
+
+    if (activeNodes.length > 0) {
+      out += ">> ACTIVE_FOCUS_ITEMS:\n";
+      activeNodes.forEach(n => {
+        out += ` - [${n.type}] ID: ${n.id} | STATE: ${n.properties.resolutionState} | CONTEXT: ${n.properties.context || 'None'}\n`;
+      });
     }
-    return out;
-  }
+
+    if (archivedNodes.length > 0) {
+      out += ">> ARCHIVED_HISTORY (DO NOT RE-OPEN):\n";
+      archivedNodes.forEach(n => out += ` - ${n.type} ${n.id}: RESOLVED\n`);
+    }
+  
+  return out;
+}
 }

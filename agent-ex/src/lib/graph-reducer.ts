@@ -1,3 +1,8 @@
+/**
+ * @file graph-reducer.ts
+ * @description Event-Sourced Graph Reducer to Reconstruct MemoryGraph from Agent Events.
+ */
+
 import { MemoryGraph } from './memory-graph';
 import type { AgentEvent } from '@/types/agent-types';
 
@@ -9,6 +14,15 @@ export function rebuildGraph(history: AgentEvent[]): MemoryGraph {
     switch (event.type) {
       case 'USER_UPDATE':
         const text = event.payload.text;
+        const activeConflict = Array.from(graph.nodes.values())
+          .find(n => n.properties.resolutionState === 'UNRESOLVED_CONFLICT');
+
+        if (activeConflict) {
+          graph.setNode(activeConflict.id, activeConflict.type, {
+          // Append the new input directly to the entity that is currently "broken"
+          workingContext: `${activeConflict.properties.workingContext || ""} | New Detail: ${text}`.trim()
+          });
+        }  
         
         // 1. Ensure a Root Issue exists
         let activeIssue = graph.findActiveIssue();
