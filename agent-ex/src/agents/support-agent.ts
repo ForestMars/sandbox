@@ -2,7 +2,7 @@
 
 import { generateText } from 'ai';
 import { ollama } from 'ai-sdk-ollama';
-import { orderLookupTool } from '../tools/order-tools';
+import { orderLookupTool } from '@/tools/order-tools';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { z } from 'zod';
@@ -10,14 +10,16 @@ import type {
   AgentStep, 
   AgentConfig,
   Tool 
-} from '../types/agent-types';
+} from '@/types/agent-types';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+
+const DEBUG = process.env.DEBUG === 'true' || false;
 
 const active_model = 'qwen2.5:7b';
-const instructions = readFileSync(
-  join(process.cwd(), 'config', 'agent-instructions.txt'),
-  'utf-8'
-);
-const DEBUG = process.env.DEBUG === 'true';
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const instructionsPath = join(__dirname, '..', '..', 'config', 'agent-instructions.txt');
+const instructions = readFileSync(instructionsPath, 'utf-8');
 
 /**
  * LLM response structure
