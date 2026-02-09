@@ -20,6 +20,12 @@ export async function startChat() {
   console.log(`Loaded model: ${supportAgentModelSpec}\n`);
   const rl = readline.createInterface({ input, output });
 
+  // Initialize the global workspace. This lives outside the loop so it persists across multiple turns.
+  const session: AgentSession = {
+    id: 'cli-session-' + Date.now(),
+    events: []
+  };
+
   try {
     while (true) {
       const userInput = await rl.question('You: ');
@@ -34,7 +40,7 @@ export async function startChat() {
         let finalText = '';
 
         // Consume the generator from the support agent
-        for await (const step of supportAgent(userInput)) {
+        for await (const step of supportAgent(userInput, session)) {
           steps.push(step);
           
           if (DEBUG) {
