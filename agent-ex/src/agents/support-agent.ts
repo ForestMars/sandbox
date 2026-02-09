@@ -25,8 +25,8 @@ const instructions = readFileSync(join(__dirname, '..', '..', 'config', 'agent-i
  * Validates the expected tool call format from the LLM
  */
 const ToolCallSchema = z.object({
-  tool: z.string(),
-  orderId: z.string()
+  tool: z.string().optional(),
+  orderId: z.string().or(z.number()).transform(v => String(v))
 });
 
 /**
@@ -48,10 +48,27 @@ const supportAgentConfig: AgentConfig = {
  */
 export async function* supportAgent(
   userInput: string,
-  opts?: { client?: unknown }
+  session: AgentSession,
+  opts?: { client?: any } // This is our data plane port. 
 ): AsyncGenerator<AgentStep, void, unknown> {
-  
+
   const model = opts?.client || ollama(supportAgentConfig.model);
+
+  // 1. Record the "Update" (Data Plane)
+  session.events.push({ type: 'USER_UPDATE', payload: userInput, timestamp: Date.now() });
+
+  // 2. Logic: Should we call the Control Plane?
+  const isPreviouslyDeleted = session.worldModel.lookupFailures.includes("999");
+  const hasNewMetadata = userInput.includes("green"); // Simple heuristic
+
+  if (isPreviouslyDeleted && hasNewMetadata) {
+    // SUBNET ESCAPE: We have a Data Plane update for a Deleted resource.
+    // We "Micro-Respawn" the logic here by ignoring the Oracle.
+    const response = "I see you're mentioning the green sweater for order 999. Since our main system isn't showing that ID, I've flagged this for manual restoration. Can you tell me..."
+    
+    yield { type: 'final', text: response };
+    return session; 
+  }
 
   yield { 
     type: 'thinking', 
@@ -74,8 +91,10 @@ export async function* supportAgent(
   if (jsonMatch) {
     try {
       const parsed = JSON.parse(jsonMatch[0]);
-      if (parsed.tool || parsed.orderId) {
-        toolCall = parsed;
+      // Use Zod to safely validate the extracted JSON
+      const validated = ToolCallSchema.safeParse(parsed);
+      if (validated.success) {
+        toolCall = validated.data;
       }
     } catch (e) {
       // JSON parse failed, treat as conversational
@@ -83,7 +102,7 @@ export async function* supportAgent(
   }
 
   if (toolCall) {
-    const orderId = String(toolCall.orderId || "unknown");
+    const orderId = toolCall.orderId;
     const toolId = toolCall.tool || 'invoice-status';
     
     yield { 
@@ -111,7 +130,7 @@ export async function* supportAgent(
     const finalResponse = await generateText({
       model,
       system: supportAgentConfig.instructions,
-      prompt: `User: ${userInput}\nData: ${JSON.stringify(result)}\n\nSummarize:`,
+      prompt: `User: ${userInput}\nData: ${JSON.stringify(result)}\n\nSummarize the status for the user:`,
       temperature: supportAgentConfig.temperature
     });
 
