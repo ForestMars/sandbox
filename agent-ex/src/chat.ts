@@ -17,9 +17,8 @@ const DEBUG = true;
  * clean mocking and to prevent top-level side effects during testing.
  */
 export async function startChat() {
-  const rl = readline.createInterface({ input, output });
-
   console.log(`Loaded model: ${supportAgentModelSpec}\n`);
+  const rl = readline.createInterface({ input, output });
 
   try {
     while (true) {
