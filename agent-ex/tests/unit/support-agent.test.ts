@@ -23,9 +23,9 @@ function makeMockClient(returnText: string) {
   } as any;
 }
 
-test('agent calls orderLookupTool when LLM triggers tool path', async () => {
+test('agent calls entityLookupTool when LLM triggers tool path', async () => {
   // We mock the first LLM pass to return a JSON string that triggers the tool logic
-  const mockToolTrigger = JSON.stringify({ tool: 'invoice-status', orderId: '12345' });
+  const mockToolTrigger = JSON.stringify({ tool: 'invoice-status', entityId: '12345' });
   const mock = makeMockClient(mockToolTrigger);
   
   const gen = supportAgent('Please check order #12345', { client: mock });
@@ -36,7 +36,7 @@ test('agent calls orderLookupTool when LLM triggers tool path', async () => {
   for await (const step of gen) {
     if (step.type === 'tool_call') {
       toolCallSeen = true;
-      expect(step.parameters.orderId).toBe('12345');
+      expect(step.parameters.entityId).toBe('12345');
     }
     if (step.type === 'final') {
       finalText = step.text;

@@ -35,9 +35,9 @@ export function rebuildGraph(history: AgentEvent[]): MemoryGraph {
         // 2. Extract Entities and PARENT them to the Issue
         const idMatch = text.match(/#?(\d{3,})/);
         if (idMatch) {
-          const orderId = idMatch[1];
-          graph.setNode(orderId, 'ORDER', { id: orderId });
-          graph.addEdge(activeIssue!.id, orderId);
+          const entityId = idMatch[1];
+          graph.setNode(entityId, 'ENTITY', { id: entityId });
+          graph.addEdge(activeIssue!.id, entityId);
         }
 
         // 3. Update the Issue's working context (Sticky Memory)
@@ -53,15 +53,15 @@ export function rebuildGraph(history: AgentEvent[]): MemoryGraph {
         break;
 
       case 'TOOL_RESULT':
-        const { orderId, result } = event.payload;
-        graph.setNode(orderId, 'ORDER', { ...result });
-        
+        const { entityId, result } = event.payload;
+        graph.setNode(entityId, 'ENTITY', { ...result });
+
         // If the tool fails, update the parent issue to reflect the conflict
         const issue = graph.findActiveIssue();
         if (issue && result.status === "Not Found") {
           graph.setNode(issue.id, 'ISSUE', { 
             resolution: 'CONFLICT_WAITING_FOR_USER_INFO',
-            failedAttemptId: orderId 
+            failedAttemptId: entityId 
           });
         }
         break;

@@ -6,15 +6,15 @@
  */
 
 import { test, expect, describe } from 'bun:test';
-import { orderLookupTool } from './order-tools';
+import { entityLookupTool } from './order-tools';
 
-describe('orderLookupTool', () => {
+describe('entityLookupTool', () => {
   
   /**
    * Verified: The tool correctly retrieves existing records.
    */
   test('returns "Shipped" for ID 12345', async () => {
-    const result = await orderLookupTool.execute({ orderId: '12345' });
+    const result = await entityLookupTool.execute({ entityId: '12345' });
     expect(result.status).toBe('Shipped');
   });
 
@@ -22,7 +22,7 @@ describe('orderLookupTool', () => {
    * Verified: Users often input "#12345". The tool must strip the symbol.
    */
   test('normalizes IDs containing the "#" symbol', async () => {
-    const result = await orderLookupTool.execute({ orderId: '#12345' });
+    const result = await entityLookupTool.execute({ entityId: '#12345' });
     expect(result.status).toBe('Shipped');
   });
 
@@ -30,7 +30,7 @@ describe('orderLookupTool', () => {
    * Verified: Graceful failure when an ID is missing from the mock DB.
    */
   test('returns "Not Found" for unregistered IDs', async () => {
-    const result = await orderLookupTool.execute({ orderId: '999' });
+    const result = await entityLookupTool.execute({ entityId: '999' });
     expect(result.status).toBe('Not Found');
     expect(result.deliveryDate).toBe('N/A');
   });

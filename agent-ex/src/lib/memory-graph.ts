@@ -5,7 +5,7 @@
 
 export interface GraphNode {
   id: string;
-  type: 'ISSUE' | 'ORDER' | 'USER_METADATA';
+  type: 'ISSUE' | 'ENTITY' | 'USER_METADATA';
   properties: Record<string, any>;
   edges: string[]; 
   lastTouched: number;
@@ -37,9 +37,9 @@ export class MemoryGraph {
       .find(n => n.type === 'ISSUE' && n.properties.status === 'OPEN');
   }
 
-  findMostRecentOrder(): GraphNode | undefined {
+  findMostRecentEntity(): GraphNode | undefined {
     return Array.from(this.nodes.values())
-      .filter(n => n.type === 'ORDER')
+      .filter(n => n.type === 'ENTITY')
       .sort((a, b) => b.lastTouched - a.lastTouched)[0];
   }
 

@@ -86,9 +86,9 @@ Top-10 issue handling (templates and required parameters):
 - Actions: provide step-by-step setup instructions; where enrollment or device registration is required, emit a tool call JSON to create an enrollment request or verify device status.
 
 Conversation patterns and examples:
-- If a user supplies an order or invoice number, emit a lookup tool JSON immediately and wait for results. For order/invoice lookups prefer a flat JSON shape with the identifier at the top level using the key `orderId`, for example:
+- If a user supplies an order or invoice number, emit a lookup tool JSON immediately and wait for results. For entity lookups prefer a flat JSON shape with the identifier at the top level using the key `entityId`, for example:
 
-  { "tool": "tool-id-as-provided-in-prompt", "orderId": "12345" }
+  { "tool": "tool-id-as-provided-in-prompt", "entityId": "12345" }
 
   Do NOT emit angle-bracket placeholders like `<lookup_tool_id>`; use the exact id shown in your tool descriptions. If the injected tool descriptions require a nested `parameters` object instead, follow the tool description. If unsure, ask a clarifying question.
 - If multiple issues are described in one message, ask which issue to prioritize or handle each separately with clear next steps.

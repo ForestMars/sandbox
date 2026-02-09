@@ -5,7 +5,7 @@
 
 import { generateText } from 'ai';
 import { ollama } from 'ai-sdk-ollama';
-import { orderLookupTool } from '@/tools/order-tools';
+import { entityLookupTool } from '@/tools/order-tools';
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -22,7 +22,7 @@ const instructions = readFileSync(join(__dirname, '..', '..', 'config', 'agent-i
 
 const ToolCallSchema = z.object({
   tool: z.string().optional(),
-  orderId: z.string().or(z.number()).transform(v => String(v))
+  entityId: z.string().or(z.number()).transform(v => String(v))
 });
 
 const supportAgentConfig: AgentConfig = {
@@ -30,7 +30,7 @@ const supportAgentConfig: AgentConfig = {
   model: process.env.SUPPORT_AGENT_MODEL || DEFAULT_MODEL,
   instructions,
   temperature: TEMPERATURE,
-  tools: [orderLookupTool]
+  tools: [entityLookupTool]
 };
 
 async function loadSkill(fileName: string): Promise<string> {
@@ -111,19 +111,19 @@ export async function* supportAgent(
 
   // 5. EXECUTION & BROADCAST
   if (toolCall) {
-    const { orderId } = toolCall;
-    const toolId = toolCall.tool || 'order-lookup';
-    
-    yield { type: 'tool_call', timestamp: Date.now(), toolId, parameters: { orderId } };
+    const { entityId } = toolCall;
+    const toolId = toolCall.tool || 'entity-lookup';
+
+    yield { type: 'tool_call', timestamp: Date.now(), toolId, parameters: { entityId } };
 
     // Execute the tool (The "Oracle" call)
-    const result = await orderLookupTool.execute({ orderId });
-    
+    const result = await entityLookupTool.execute({ entityId });
+
     // BROADCAST the tool result back to the session log
     // This is the key to preventing the 999 loop on re-hydration!
     session.events.push({
       type: 'TOOL_RESULT',
-      payload: { toolId, orderId, result },
+      payload: { toolId, entityId, result },
       timestamp: Date.now()
     });
 
