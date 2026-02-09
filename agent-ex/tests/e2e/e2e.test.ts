@@ -1,7 +1,7 @@
 import { test, expect } from "bun:test";
 import { supportAgent } from '@/agents/support-agent';
 
-const TEST_TIMEOUT = 40000; // Needed for local inference 
+const TEST_TIMEOUT = 90000; // Needed for local inference 
 
 test('E2E: Invoice lookup (12345)', async () => {
   const invoiceGen = supportAgent('Please check invoice #12345');

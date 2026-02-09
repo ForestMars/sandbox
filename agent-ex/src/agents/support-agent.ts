@@ -1,207 +1,105 @@
-// src/agents/support-agent.ts
-
 import { generateText } from 'ai';
 import { ollama } from 'ai-sdk-ollama';
-import { orderLookupTool } from '@/tools/order-tools';
+import { orderLookupTool } from '@/tools/order-tools'; // Using your existing tool
 import { readFileSync } from 'fs';
-import { join } from 'path';
-import { z } from 'zod';
-import type { 
-  AgentStep, 
-  AgentConfig,
-  Tool 
-} from '@/types/agent-types';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { z } from 'zod';
+import type { AgentStep, AgentConfig } from '@/types/agent-types';
 
-const DEBUG = process.env.DEBUG === 'true' || false;
+// --- HOISTED CONSTANTS ---
+const DEFAULT_MODEL = 'qwen2.5:7b';
+const TEMPERATURE = 0; 
+const MAX_ITERATIONS = 5;
 
-const active_model = 'qwen2.5:7b';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const instructionsPath = join(__dirname, '..', '..', 'config', 'agent-instructions.txt');
 const instructions = readFileSync(instructionsPath, 'utf-8');
 
 /**
- * LLM response structure
+ * Tool call schema for parsing LLM output
  */
-interface LLMResponse {
-  text: string;
-}
-
-/**
- * Tool call request from LLM
- */
-const ToolCallRequestSchema = z.object({
+const ToolCallSchema = z.object({
   tool: z.string(),
-  orderId: z.string()
+  orderId: z.string().optional(),
+  parameters: z.record(z.any()).optional()
 });
 
-type ToolCallRequest = z.infer<typeof ToolCallRequestSchema>;
-
-/**
- * Support agent configuration
- */
 const supportAgentConfig: AgentConfig = {
   name: 'SupportBot',
-  model: process.env.SUPPORT_AGENT_MODEL || active_model,
+  model: process.env.SUPPORT_AGENT_MODEL || DEFAULT_MODEL,
   instructions,
+  temperature: TEMPERATURE,
   tools: [orderLookupTool]
 };
 
-/**
- * Generator-based support agent
- * 
- * Yields steps as execution progresses:
- * 1. thinking - Initial processing
- * 2. llm_response - LLM returned text/tool request
- * 3. tool_call - Executing a tool (if needed)
- * 4. tool_result - Tool execution complete (if tool was called)
- * 5. final - Natural language response ready
- * 
- * @param userInput - User's message
- * @param opts - Optional configuration
- */
 export async function* supportAgent(
   userInput: string,
   opts?: { client?: unknown }
 ): AsyncGenerator<AgentStep, void, unknown> {
   
-  // Dev greeting shortcut
-  if (process.env.MODE === "dev" && /^\s*(hi|hello|hey|are you there)\s*$/i.test(userInput)) {
-    yield {
-      type: 'final',
-      timestamp: Date.now(),
-      text: "SupportBot: Hello! How can I help you today?"
-    };
-    return;
-  }
-
   const model = opts?.client || ollama(supportAgentConfig.model);
-  const prompt = `${supportAgentConfig.instructions}\n\nUser: ${userInput}\nAssistant:`;
+  let conversationHistory = `User: ${userInput}`;
+  let isComplete = false;
+  let iterations = 0;
 
-  // Step 1: Initial LLM call
-  yield {
-    type: 'thinking',
-    timestamp: Date.now(),
-    message: 'Processing your request...'
-  };
+  while (!isComplete && iterations < MAX_ITERATIONS) {
+    iterations++;
 
-  let llmResponse: LLMResponse;
-  try {
-    llmResponse = await generateText({ model, prompt }) as LLMResponse;
-  } catch (e) {
-    const errorMessage = e instanceof Error ? e.message : String(e);
-    yield {
-      type: 'final',
-      timestamp: Date.now(),
-      text: `Sorry, something went wrong: ${errorMessage}`
+    yield { 
+      type: 'thinking', 
+      timestamp: Date.now(), 
+      message: iterations > 1 ? 'Synthesizing answer...' : 'Processing request...' 
     };
-    return;
-  }
 
-  const llmText = llmResponse?.text || '';
+    const response = await generateText({
+      model,
+      system: supportAgentConfig.instructions,
+      prompt: conversationHistory,
+      temperature: supportAgentConfig.temperature,
+    });
 
-  // Step 2: Yield LLM response
-  yield {
-    type: 'llm_response',
-    timestamp: Date.now(),
-    text: llmText,
-    raw: llmResponse
-  };
+    const text = response.text.trim();
+    const cleanJson = text.replace(/```json|```/g, '').trim();
 
-  // Step 3: Check for tool call
-  let toolCallRequested: ToolCallRequest | null = null;
-  try {
-    const parsed = JSON.parse(llmText);
-    const validated = ToolCallRequestSchema.safeParse(parsed);
-    
-    if (validated.success) {
-      // Find the matching tool
-      const tool = supportAgentConfig.tools.find(t => t.id === validated.data.tool);
-      if (tool) {
-        toolCallRequested = validated.data;
+    try {
+      // Attempt to parse tool call
+      const parsed = JSON.parse(cleanJson);
+      const validated = ToolCallSchema.safeParse(parsed);
+      
+      if (validated.success && validated.data.tool) {
+        const toolId = validated.data.tool;
+        const tool = supportAgentConfig.tools.find(t => t.id === toolId);
+        
+        if (tool) {
+          const params = validated.data.parameters || { orderId: validated.data.orderId };
+          
+          yield { type: 'tool_call', timestamp: Date.now(), toolId: tool.id, parameters: params };
+
+          const result = await tool.execute(params);
+          
+          yield { type: 'tool_result', timestamp: Date.now(), toolId: tool.id, result };
+
+          // Update history for the next loop iteration
+          conversationHistory += `\nAssistant (Tool Call): ${text}\nTool Result: ${JSON.stringify(result)}\nInstructions: Use this data to provide a final answer to the user.`;
+        } else {
+          conversationHistory += `\nAssistant: Error: Tool ${toolId} not found.`;
+        }
+      } else {
+        // Valid JSON but not a tool call? Treat as final.
+        yield { type: 'final', timestamp: Date.now(), text };
+        isComplete = true;
       }
+    } catch (e) {
+      // Not JSON? It's a plain text response.
+      yield { type: 'final', timestamp: Date.now(), text };
+      isComplete = true;
     }
-  } catch {
-    // Not a tool call - treat as final response
   }
 
-  // Step 4 & 5: Execute tool if requested
-  if (toolCallRequested) {
-    // Yield tool call step
-    yield {
-      type: 'tool_call',
-      timestamp: Date.now(),
-      toolId: orderLookupTool.id,
-      toolName: orderLookupTool.name,
-      parameters: { orderId: toolCallRequested.orderId }
-    };
-
-    // Execute tool
-    let toolResult: unknown;
-    try {
-      toolResult = await orderLookupTool.execute({ orderId: toolCallRequested.orderId });
-      
-      // Yield tool result
-      yield {
-        type: 'tool_result',
-        timestamp: Date.now(),
-        toolId: orderLookupTool.id,
-        result: toolResult
-      };
-    } catch (e) {
-      const errorMessage = e instanceof Error ? e.message : String(e);
-      yield {
-        type: 'tool_result',
-        timestamp: Date.now(),
-        toolId: orderLookupTool.id,
-        result: null,
-        error: errorMessage
-      };
-      
-      yield {
-        type: 'final',
-        timestamp: Date.now(),
-        text: `Sorry, I encountered an error looking up that information: ${errorMessage}`
-      };
-      return;
-    }
-
-    // Step 6: Synthesize natural language response
-    yield {
-      type: 'thinking',
-      timestamp: Date.now(),
-      message: 'Generating response...'
-    };
-
-    const followUpPrompt = `${supportAgentConfig.instructions}\n\nUser: ${userInput}\n\nTool Result: ${JSON.stringify(toolResult)}\n\nAssistant:`;
-    
-    try {
-      const followUpResp = await generateText({ model, prompt: followUpPrompt }) as LLMResponse;
-      
-      yield {
-        type: 'final',
-        timestamp: Date.now(),
-        text: followUpResp?.text || JSON.stringify(toolResult)
-      };
-    } catch (e) {
-      const errorMessage = e instanceof Error ? e.message : String(e);
-      // Fallback to raw tool result
-      yield {
-        type: 'final',
-        timestamp: Date.now(),
-        text: JSON.stringify(toolResult)
-      };
-    }
-  } else {
-    // No tool needed - LLM response is the final answer
-    yield {
-      type: 'final',
-      timestamp: Date.now(),
-      text: llmText
-    };
+  if (iterations >= MAX_ITERATIONS && !isComplete) {
+    yield { type: 'final', timestamp: Date.now(), text: "I'm sorry, I reached my reasoning limit." };
   }
 }
 
-// Export config for backwards compatibility
 export const supportAgentModelSpec = supportAgentConfig.model;
