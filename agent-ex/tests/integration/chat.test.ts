@@ -1,58 +1,61 @@
 /**
  * @file chat.test.ts
- * @description Unit tests for the CLI chat entry point.
- * Mocks readline and the supportAgent generator to verify the UI loop.
+ * @description Integration test for the CLI loop.
  */
 
-import { test, expect, spyOn, describe, beforeEach, afterEach } from "bun:test";
+import { test, expect, spyOn, describe, beforeEach, afterEach, mock as bunMock } from "bun:test";
 import * as readline from 'node:readline/promises';
-import { supportAgent } from '@/agents/support-agent';
 
-// We need to mock the supportAgent module
-// In Bun, we can mock the exported function
-const mockAgent = spyOn(require('@/agents/support-agent'), 'supportAgent');
+// Using @ alias for F500-standard architecture
+import * as agentModule from '@/agents/support-agent';
+import { startChat } from '@/chat';
 
 describe('Chat CLI Logic', () => {
-  let mockQuestion: any;
-
+  
   beforeEach(() => {
-    // Mocking the console to keep test output clean
     spyOn(console, 'log').mockImplementation(() => {});
     spyOn(console, 'error').mockImplementation(() => {});
   });
 
-  test('CLI loop terminates on "exit"', async () => {
-    // 1. Mock readline to return "exit" immediately
-    mockQuestion = spyOn(readline.promises.Interface.prototype, 'question')
-      .mockResolvedValueOnce('exit');
+  afterEach(() => {
+    // We use bunMock here because it's the imported namespace from bun:test
+    bunMock.restore(); 
+  });
 
-    // Import startChat (we might need to export it from chat.ts first)
-    // For this test to work without hanging, startChat must be exported
-    const { startChat } = require('./chat');
-    
+  test('CLI loop terminates on "exit"', async () => {
+    const mockInterface = {
+      // Create a mock function specifically for this instance
+      question: bunMock().mockResolvedValueOnce('exit'),
+      close: bunMock(),
+    };
+
+    spyOn(readline, 'createInterface').mockReturnValue(mockInterface as any);
+    const mockAgent = spyOn(agentModule, 'supportAgent');
+
     await startChat();
 
-    expect(mockQuestion).toHaveBeenCalledTimes(1);
+    expect(mockInterface.question).toHaveBeenCalledTimes(1);
     expect(mockAgent).not.toHaveBeenCalled();
   });
 
   test('CLI processes agent steps correctly', async () => {
-    // 1. Mock user input: "hi", then "exit"
-    mockQuestion = spyOn(readline.promises.Interface.prototype, 'question')
-      .mockResolvedValueOnce('hi')
-      .mockResolvedValueOnce('exit');
+    const mockInterface = {
+      question: bunMock()
+        .mockResolvedValueOnce('hi')
+        .mockResolvedValueOnce('exit'),
+      close: bunMock(),
+    };
 
-    // 2. Mock the generator response for "hi"
-    mockAgent.mockImplementation(async function* () {
+    spyOn(readline, 'createInterface').mockReturnValue(mockInterface as any);
+
+    const mockAgent = spyOn(agentModule, 'supportAgent').mockImplementation(async function* () {
       yield { type: 'thinking', timestamp: Date.now(), message: 'Thinking...' };
-      yield { type: 'final', timestamp: Date.now(), text: 'Hello there!' };
+      yield { type: 'final', timestamp: Date.now(), text: 'Hello!' };
     });
 
-    const { startChat } = require('./chat');
     await startChat();
 
     expect(mockAgent).toHaveBeenCalledWith('hi');
-    // Verify it asked the second question (the "exit" trigger)
-    expect(mockQuestion).toHaveBeenCalledTimes(2);
+    expect(mockInterface.question).toHaveBeenCalledTimes(2);
   });
 });
