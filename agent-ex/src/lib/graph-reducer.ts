@@ -1,31 +1,42 @@
-// src/lib/graph-reducer.ts
+/**
+ * @file graph-reducer.ts
+ * @description Reducer that projects an append-only event log into a MemoryGraph.
+ */
 
 import { MemoryGraph } from './memory-graph';
+import type { AgentEvent } from '@/types/agent-types';
 
-export function rebuildGraph(history: Event[]): MemoryGraph {
+export function rebuildGraph(history: AgentEvent[]): MemoryGraph {
   const graph = new MemoryGraph();
   
-  // Sort by timestamp to ensure we don't have "Time-Travel" bugs
-  const sortedHistory = history.sort((a, b) => a.ts - b.ts);
+  // Clone to avoid mutating the source of truth
+  const events = [...history].sort((a, b) => a.timestamp - b.timestamp);
 
-  for (const event of sortedHistory) {
+  for (const event of events) {
     switch (event.type) {
-      case 'USER_SAID':
-        // Extract entities and add to graph
-        const entities = extractEntities(event.payload); 
-        entities.forEach(e => graph.addNode(e));
+      case 'USER_UPDATE':
+        // 1. Identify what the user is talking about
+        // We look for the most recently touched Order in the graph
+        const activeOrder = graph.findMostRecentNode('ORDER');
+        
+        // 2. The "Subnet Link": If an order failed, attach this text to it
+        if (activeOrder && activeOrder.properties.status === 'Not Found') {
+          graph.setNode(activeOrder.id, 'ORDER', {
+            description: (activeOrder.properties.description || '') + ' ' + event.payload.text
+          });
+        }
         break;
       
-      case 'ORACLE_NOT_FOUND':
-        // Update the 'Order' node state to 'Deleted'
-        graph.updateNode(event.payload.id, { status: 'DELETED' });
-        break;
-
-      case 'DATA_RECONCILE':
-        // Link the 'Green Sweater' to 'Order 999' in the Graph
-        graph.addEdge(event.payload.orderId, event.payload.itemId);
+      case 'TOOL_RESULT':
+        if (event.payload.result.status === 'Not Found') {
+          graph.setNode(event.payload.orderId, 'ORDER', { 
+            status: 'MISSING_IN_ORACLE', // Use a high-signal status
+            needsEscalation: true 
+          });
+        }
         break;
     }
   }
+
   return graph;
 }

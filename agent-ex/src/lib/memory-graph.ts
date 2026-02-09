@@ -10,6 +10,7 @@ export interface GraphNode {
   type: string;
   properties: Record<string, any>;
   edges: string[]; // List of connected Node IDs
+  lastTouched: number; // Required for Entity Resolution
 }
 
 export class MemoryGraph {
@@ -24,8 +25,19 @@ export class MemoryGraph {
       id,
       type,
       properties: { ...existing?.properties, ...properties },
-      edges: existing?.edges || []
+      edges: existing?.edges || [], 
+      lastTouched: Date.now() // Update every time the node is modified
     });
+  }
+
+  /**
+   * Finds the node of a specific type that was modified most recently.
+   * This is how we solve the "Amnesia" problem.
+   */
+  findMostRecentNode(type: string): GraphNode | undefined {
+    return Array.from(this.nodes.values())
+      .filter(node => node.type === type)
+      .sort((a, b) => b.lastTouched - a.lastTouched)[0];
   }
 
   /**

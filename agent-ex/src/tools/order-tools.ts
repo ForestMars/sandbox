@@ -1,46 +1,41 @@
-// src/tools/order-tools.ts
+import { z } from 'zod';
+// If you have a specific Tool type in your types, keep it, 
+// but AI SDK usually expects this schema:
 
-import { Tool } from '../types/agent-types';
+export const OrderLookupSchema = z.object({
+  orderId: z.string().describe("The order or invoice ID (e.g., '12345' or '999')")
+});
 
-/**
- * Order status information
- */
-export interface OrderStatus {
-  status: 'Shipped' | 'Processing' | 'Not Found';
-  deliveryDate: string;
-}
-
-/**
- * Parameters for order lookup
- */
-export interface OrderLookupParams {
-  orderId: string;
-}
-
-const DEBUG = true;
-
-export const orderLookupTool: Tool<OrderLookupParams, OrderStatus> = {
+export const orderLookupTool = {
   id: 'invoice-status-lookup',
-  name: 'Order Lookup',
-  description: 'Look up order status by order ID',
+  description: 'Look up order/invoice status in the central Oracle database.',
+  parameters: OrderLookupSchema,
   
-  async execute({ orderId }: OrderLookupParams): Promise<OrderStatus> {
-    if (DEBUG) console.log(`[TOOL] Looking up: ${orderId}`);
-
-    const mockOrders: Record<string, OrderStatus> = {
+  execute: async ({ orderId }: { orderId: string }) => {
+    // Normalize ID
+    const id = orderId.replace(/^#/, '');
+    
+    const mockOrders: Record<string, any> = {
       '12345': { status: 'Shipped', deliveryDate: '2026-02-10' },
       '67890': { status: 'Processing', deliveryDate: 'TBD' },
     };
 
-    // Normalize order ID by removing # prefix if present
-    const normalizedId = orderId.replace(/^#/, '');
-    const result: OrderStatus = mockOrders[normalizedId] || { 
-      status: 'Not Found', 
-      deliveryDate: 'N/A' 
+    const result = mockOrders[id];
+
+    if (!result) {
+      return {
+        status: 'Not Found',
+        deliveryDate: 'N/A',
+        // Semantic Anchor: This prevents the Agent from merging this 
+        // failed node with other successful entities.
+        resolutionState: 'UNRESOLVED_CONFLICT',
+        _error_context: `Order ${id} does not exist in the primary database.`
+      };
+    }
+
+    return {
+      ...result,
+      resolutionState: 'RESOLVED'
     };
-
-    if (DEBUG) console.log(`[TOOL] Returning:`, result);
-
-    return result;
   },
 };

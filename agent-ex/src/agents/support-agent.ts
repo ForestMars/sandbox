@@ -77,6 +77,8 @@ export async function* supportAgent(
   });
 
   const text = response.text.trim();
+  console.log(`\n[DEBUG] LLM Raw Output: """\n${text}\n"""\n`);
+
   let toolCall = null;
 
   // Extract JSON tool calls (The "Control Plane" intent)
@@ -109,10 +111,12 @@ export async function* supportAgent(
 
     yield { type: 'tool_result', timestamp: Date.now(), toolId, result };
 
+    const updatedWorldModel = rebuildGraph(session.events);
     // Final Synthesis using the updated tool data
     const finalResponse = await generateText({
       model,
-      system: supportAgentConfig.instructions,
+      // system: supportAgentConfig.instructions,
+      system: `${supportAgentConfig.instructions}\n\n${worldModel.serialize()}`,
       prompt: `User: ${userInput}\nTool Result: ${JSON.stringify(result)}\n\nSummarize for user:`,
       temperature: supportAgentConfig.temperature
     });
