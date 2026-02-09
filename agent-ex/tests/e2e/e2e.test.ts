@@ -28,4 +28,4 @@ test('E2E: Basic conversational check', async () => {
 
   console.log('Agent response:', convoFinal);
   expect(convoFinal.length).toBeGreaterThan(3);
-});
+}, TEST_TIMEOUT);

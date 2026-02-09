@@ -1,30 +1,37 @@
+/**
+ * @file support-agent.ts
+ * @description Core generator-based agent for corporate support. 
+ * Handles natural language intent, tool orchestration, and synthesis.
+ * @module agents/support-agent
+ */
+
 import { generateText } from 'ai';
 import { ollama } from 'ai-sdk-ollama';
-import { orderLookupTool } from '@/tools/order-tools'; // Using your existing tool
+import { orderLookupTool } from '@/tools/order-tools';
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { z } from 'zod';
 import type { AgentStep, AgentConfig } from '@/types/agent-types';
 
-// --- HOISTED CONSTANTS ---
+// --- CONFIGURATION ---
 const DEFAULT_MODEL = 'qwen2.5:7b';
 const TEMPERATURE = 0; 
-const MAX_ITERATIONS = 5;
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const instructionsPath = join(__dirname, '..', '..', 'config', 'agent-instructions.txt');
-const instructions = readFileSync(instructionsPath, 'utf-8');
+const instructions = readFileSync(join(__dirname, '..', '..', 'config', 'agent-instructions.txt'), 'utf-8');
 
 /**
- * Tool call schema for parsing LLM output
+ * Validates the expected tool call format from the LLM
  */
 const ToolCallSchema = z.object({
   tool: z.string(),
-  orderId: z.string().optional(),
-  parameters: z.record(z.any()).optional()
+  orderId: z.string()
 });
 
+/**
+ * Support agent configuration object
+ */
 const supportAgentConfig: AgentConfig = {
   name: 'SupportBot',
   model: process.env.SUPPORT_AGENT_MODEL || DEFAULT_MODEL,
@@ -33,73 +40,94 @@ const supportAgentConfig: AgentConfig = {
   tools: [orderLookupTool]
 };
 
+/**
+ * Generator-based support agent.
+ * @param {string} userInput - The raw message from the user.
+ * @param {Object} [opts] - Optional client overrides for testing.
+ * @yields {AgentStep} Current execution state.
+ */
 export async function* supportAgent(
   userInput: string,
   opts?: { client?: unknown }
 ): AsyncGenerator<AgentStep, void, unknown> {
   
   const model = opts?.client || ollama(supportAgentConfig.model);
-  let conversationHistory = `User: ${userInput}`;
-  let isComplete = false;
-  let iterations = 0;
 
-  while (!isComplete && iterations < MAX_ITERATIONS) {
-    iterations++;
+  yield { 
+    type: 'thinking', 
+    timestamp: Date.now(), 
+    message: 'Analyzing request...' 
+  };
+
+  const firstResponse = await generateText({
+    model,
+    system: supportAgentConfig.instructions,
+    prompt: userInput,
+    temperature: supportAgentConfig.temperature
+  });
+
+  const text = firstResponse.text.trim();
+  let toolCall = null;
+
+  // Regex to extract JSON block from potentially conversational LLM output
+  const jsonMatch = text.match(/\{[\s\S]*\}/);
+  if (jsonMatch) {
+    try {
+      const parsed = JSON.parse(jsonMatch[0]);
+      if (parsed.tool || parsed.orderId) {
+        toolCall = parsed;
+      }
+    } catch (e) {
+      // JSON parse failed, treat as conversational
+    }
+  }
+
+  if (toolCall) {
+    const orderId = String(toolCall.orderId || "unknown");
+    const toolId = toolCall.tool || 'invoice-status';
+    
+    yield { 
+      type: 'tool_call', 
+      timestamp: Date.now(), 
+      toolId, 
+      parameters: { orderId } 
+    };
+
+    const result = await orderLookupTool.execute({ orderId });
+    
+    yield { 
+      type: 'tool_result', 
+      timestamp: Date.now(), 
+      toolId, 
+      result 
+    };
 
     yield { 
       type: 'thinking', 
       timestamp: Date.now(), 
-      message: iterations > 1 ? 'Synthesizing answer...' : 'Processing request...' 
+      message: 'Synthesizing response...' 
     };
 
-    const response = await generateText({
+    const finalResponse = await generateText({
       model,
       system: supportAgentConfig.instructions,
-      prompt: conversationHistory,
-      temperature: supportAgentConfig.temperature,
+      prompt: `User: ${userInput}\nData: ${JSON.stringify(result)}\n\nSummarize:`,
+      temperature: supportAgentConfig.temperature
     });
 
-    const text = response.text.trim();
-    const cleanJson = text.replace(/```json|```/g, '').trim();
-
-    try {
-      // Attempt to parse tool call
-      const parsed = JSON.parse(cleanJson);
-      const validated = ToolCallSchema.safeParse(parsed);
-      
-      if (validated.success && validated.data.tool) {
-        const toolId = validated.data.tool;
-        const tool = supportAgentConfig.tools.find(t => t.id === toolId);
-        
-        if (tool) {
-          const params = validated.data.parameters || { orderId: validated.data.orderId };
-          
-          yield { type: 'tool_call', timestamp: Date.now(), toolId: tool.id, parameters: params };
-
-          const result = await tool.execute(params);
-          
-          yield { type: 'tool_result', timestamp: Date.now(), toolId: tool.id, result };
-
-          // Update history for the next loop iteration
-          conversationHistory += `\nAssistant (Tool Call): ${text}\nTool Result: ${JSON.stringify(result)}\nInstructions: Use this data to provide a final answer to the user.`;
-        } else {
-          conversationHistory += `\nAssistant: Error: Tool ${toolId} not found.`;
-        }
-      } else {
-        // Valid JSON but not a tool call? Treat as final.
-        yield { type: 'final', timestamp: Date.now(), text };
-        isComplete = true;
-      }
-    } catch (e) {
-      // Not JSON? It's a plain text response.
-      yield { type: 'final', timestamp: Date.now(), text };
-      isComplete = true;
-    }
-  }
-
-  if (iterations >= MAX_ITERATIONS && !isComplete) {
-    yield { type: 'final', timestamp: Date.now(), text: "I'm sorry, I reached my reasoning limit." };
+    yield { 
+      type: 'final', 
+      timestamp: Date.now(), 
+      text: finalResponse.text 
+    };
+  } else {
+    yield { 
+      type: 'final', 
+      timestamp: Date.now(), 
+      text 
+    };
   }
 }
 
+// Ensure this matches the import in chat.ts exactly
 export const supportAgentModelSpec = supportAgentConfig.model;
