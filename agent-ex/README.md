@@ -1,60 +1,78 @@
-# Project overview
+SupportBot: Event-Sourced Knowledge Graph Agent
+A deterministic support agent architecture that treats the conversation as an append-only event log and uses Global Workspace Theory to build a transient world model (Knowledge Graph) for every inference turn.
 
-This repo previously used `Mastra` as a thin orchestration layer around an AI SDK. The codebase has been refactored to call the AI SDK (or a small compatibility wrapper) directly.
+1. Architectural Philosophy
+Unlike "stateless" chat completion loops, this agent operates on a Data Plane vs. Control Plane separation:
 
-## Difference: Mastra vs raw AI SDK `generate` shape
+Data Plane (The Log): Every user message, tool execution, and system state change is recorded as a discrete AgentEvent.
 
-This section documents the key differences between the `Mastra` agent `generate()` result and a raw AI SDK `generate`/`predict` response, and shows how we keep compatibility in this repo.
+Control Plane (The Brain): A reducer function (rebuildGraph) collapses the event log into a directed graph of known entities (Orders, Issues, Users) before the LLM is even called.
 
-- **Mastra `Agent.generate()` shape (used by callers in this repo)**:
+2. Core Components
+rebuildGraph (The Reducer)
+The heart of the system. It consumes AgentSession.events and outputs a WorldModel.
 
-  - `result.text` (string): the final text reply to return to the user.
-  - `result.steps` (array): ordered steps produced during generation. Each step typically includes:
-    - `finishReason` (string): why the step ended (e.g., `stop`, `tool`).
-    - `text` (string): the model's message for that step.
-    - `toolCalls` (array): any tool calls performed during that step with results.
+Entity Extraction: Automatically promotes regex-matched IDs (e.g., #999) from USER_UPDATE events into Graph Nodes.
 
-  Example:
+State Reconciliation: Merges TOOL_RESULT data into existing nodes, changing their state from UNRESOLVED to RESOLVED or CONFLICT.
 
-  ```json
-  {
-    "text": "Order #12345 status: Shipped",
-    "steps": [
-      { "finishReason": "tool", "text": "Called tool entityLookupTool", "toolCalls": [{"toolId":"entityLookupTool","result":{"status":"Shipped"}}] }
-    ]
-  }
-  ```
+resolveProtocol (The Router)
+A dynamic system prompt selector. Based on the current graph state (e.g., an UNRESOLVED_CONFLICT node), it swaps the system instructions from General Support to Conflict Resolution.
 
-- **Raw AI SDK `generate` / `predict` shape**:
+supportAgent (The Async Generator)
+An AsyncGenerator<AgentStep> that streams the internal "thinking" process.
 
-  - Providers differ, but common shapes are lower-level model responses containing one or more model messages, tokens, reasons for stopping, and optional structured tool-invocation signals. Example minimal shape:
+Append USER_UPDATE to the log.
 
-  ```json
-  {
-    "outputs": [ { "content": "Hello!" } ],
-    "usage": { /* token counts */ },
-    "model": "qwen2.5"
-  }
-  ```
+Rebuild the Knowledge Graph.
 
-  - If using tool-calling, the raw SDK often returns special messages indicating an intent to call a tool (tool name + arguments) which the application must interpret, execute, and then possibly re-call the model with the tool result.
+Serialize the graph into the System Prompt.
 
-## What this repo does now
+Inference via generateText.
 
-- We provide a compatibility `supportAgent.generate()` that returns the Mastra-compatible shape (`text` + `steps`) so existing callers (`src/chat.ts`, `src/test-agent.ts`) need minimal changes.
-- Under the hood the `generate()` function should be replaced by direct calls to your chosen SDK (Vercel AI SDK or similar). The wrapper must:
-  1. Send messages to the SDK and receive the raw response.
- 2. Inspect the response for tool-invocation intents.
-3. Execute any matching tool (e.g., `entityLookupTool.execute`) and collect results.
- 4. Optionally send a follow-up model call including tool results to produce the final `text`.
- 5. Return `{ text, steps }` to match previous behavior.
+Tool Execution (Oracle calls) and subsequent log append.
 
-## Example migration notes
+3. Data Flow & Event Schema
+Events are strictly typed to prevent "hallucinated history."
 
-- To replace the shim with the Vercel AI SDK:
+TypeScript
 
-  1. Add `@vercel/ai` (or your SDK of choice) to `package.json`.
-  2. In `src/agents/support-agent.ts`, call the SDK's `predict`/`generate` with the conversation and instructions.
-  3. Parse the SDK response for tool intents, call `entityLookupTool.execute`, and synthesize the final answer.
+type AgentEvent = 
+  | { type: 'USER_UPDATE'; payload: { text: string }; timestamp: number }
+  | { type: 'TOOL_RESULT'; payload: { toolId: string; result: any }; timestamp: number }
+  | { type: 'STATE_TRANSITION'; payload: { from: string; to: string } };
+The Serialization Pattern
+To prevent the LLM from ignoring graph data (the "Lost in the Middle" problem), the system prompt is constructed as a prioritized array:
 
-If you'd like, I can implement the Vercel AI SDK integration and update `supportAgent.generate()` to call it and fully remove the compatibility shim. Want me to proceed with that now?
+Context Primacy: The KNOWLEDGE_GRAPH_STATE is injected at the top of the prompt.
+
+Constraints: Explicit "Operational Directives" (e.g., "Do not ask for IDs found in the graph").
+
+Logic: The 1500+ character Protocol instructions follow.
+
+4. Operational Guardrails
+Tool Hallucination Recovery
+The agent handles "Lazy LLM" syndrome where models return a tool's index (e.g., "0") instead of its name ("entity-lookup").
+
+Normalization: The agent checks call.toolName against an alias map.
+
+Key Mapping: Automatically maps varied LLM output keys (order_id, id, entityId) to a stable internal schema.
+
+Regex Fallback
+If the LLM fails to trigger a native tool call but emits a JSON-like block in the text stream, the agent uses a Regex + Zod parser to catch the intent and execute the tool anyway.
+
+5. Testing & Instrumentation
+Tests are located in tests/unit/support-agent.test.ts.
+
+Debugging the "Blindness" Bug
+If the agent asks for an ID it should already know, check the GRAPH_CONTEXT_SENT log.
+
+Empty Graph: Check the Reducer's regex patterns.
+
+Ignored Graph: Check the Prompt Hierarchy. The Knowledge Graph must occupy the Primacy position in the system array.
+
+Next Steps:
+
+Implement PERSISTENCE_LAYER to move the event log from memory to Postgres/Redis.
+
+Add MULTI_ENTITY_RESOLVER for sessions involving multiple orders.
