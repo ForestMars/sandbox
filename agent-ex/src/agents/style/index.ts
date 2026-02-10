@@ -1,4 +1,4 @@
-export type Persona = 'friendly' | 'formal' | 'raw' | 'none';
+export type Style = 'friendly' | 'formal' | 'raw' | 'none';
 
 export type ToolMeta = {
   id: string;
@@ -35,11 +35,11 @@ function summarizeResult(toolResult: any) {
   return String(toolResult);
 }
 
-export function formatToolResult(persona: Persona, tool: ToolMeta, toolResult: any, userInput?: string) {
+export function formatToolResult(style: Style, tool: ToolMeta, toolResult: any, userInput?: string) {
   const humanTool = humanizeToolId(tool.id || tool.description || 'tool');
 
-  // Raw persona returns JSON/stringified payload
-  if (persona === 'raw' || persona === 'none') {
+  // Raw style returns JSON/stringified payload
+  if (style === 'raw' || style === 'none') {
     try {
       return typeof toolResult === 'string' ? toolResult : JSON.stringify(toolResult);
     } catch (e) {
@@ -49,11 +49,11 @@ export function formatToolResult(persona: Persona, tool: ToolMeta, toolResult: a
 
   const summary = summarizeResult(toolResult);
 
-  if (persona === 'friendly') {
+  if (style === 'friendly') {
     return `I have your answer. The ${humanTool}${userInput ? ` (${userInput})` : ''} shows: ${summary}`;
   }
 
-  if (persona === 'formal') {
+  if (style === 'formal') {
     return `Result for ${humanTool}: ${summary}`;
   }
 
