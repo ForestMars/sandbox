@@ -12,6 +12,7 @@ import { dirname, join } from 'node:path';
 import { z } from 'zod';
 import { rebuildGraph } from '@/lib/graph-reducer';
 import type { AgentStep, AgentConfig, AgentSession, AgentEvent } from '@/types/agent-types';
+import { resolveProtocol } from '@/lib/protocol-resolver';
 
 // --- CONFIGURATION ---
 const DEFAULT_MODEL = 'qwen2.5:7b';
@@ -60,12 +61,18 @@ export async function* supportAgent(
   // @TODO Prompt assembly should be moved into its own function. 
   // Load Constitution (rebuilds world model from event log.)
   const coreInstructions = instructions
+  
+  // REDUCR: Build the World Model from the append-only log
+  // This allows the agent to "remember" failures across devices.
   const worldModel = rebuildGraph(session.events);
-  // Fetch skills. (Capability Discovery) Dynamic capabilities can be thought of as decorators on the HOF which provides control plane policy. 
+  const { skill, tools, name } = resolveProtocol(worldModel.serialize(), session.activeDomain);
+  console.log(`[ROUTER] Engaging ${name} protocol.`);
+
+  // Capability Discovery - Dynamic capabilities can be thought of as decorators on the HOF which provides control plane policy. 
   // NB. we don't get this from session.activeDomain bc we want to be able to load the entity-resolution skill even if the active domain is something else. 
   // This allows the agent to acquire new capabilities on the fly based on the current state of the world model, rather than being limited to a single domain's skill set.
-  const graphContext = worldModel.serialize();
   // const activeSkillContent = session.activeDomain 
+  const graphContext = worldModel.serialize();
   let domainSkill = "";
   if (graphContext.includes('UNRESOLVED_CONFLICT')) {
     domainSkill = await loadSkill('entity-resolution.md');
@@ -89,10 +96,6 @@ export async function* supportAgent(
   };
   session.events.push(userEvent);
 
-  // REDUCR: Build the World Model from the append-only log
-  // This allows the agent to "remember" failures across devices.
- 
-
   yield { 
     type: 'thinking', 
     timestamp: Date.now(), 
@@ -107,7 +110,9 @@ export async function* supportAgent(
   // INFERENCE: Call LLM with instructions and the serialized Graph State
   const response = await generateText({
     model,
-    system: `${supportAgentConfig.instructions}\n\nCURRENT_KNOWLEDGE_GRAPH:\n${graphContext}`,
+    // system: `${supportAgentConfig.instructions}\n\nCURRENT_KNOWLEDGE_GRAPH:\n${graphContext}`,
+    system: `${style}\n\n${skill}\n\n${worldModel.serialize()}`,
+    tools: tools, 
     prompt: userInput,
     temperature: supportAgentConfig.temperature
   });
@@ -117,7 +122,7 @@ export async function* supportAgent(
 
   let toolCall = null;
 
-  // Extract JSON tool calls Control Plane intent
+  // Extract JSON tool calls from Control Plane intent
   const jsonMatch = text.match(/\{[\s\S]*\}/);
   if (jsonMatch) {
     try {

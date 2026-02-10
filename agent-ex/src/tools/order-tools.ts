@@ -37,5 +37,11 @@ export const entityLookupTool = {
       ...result,
       resolutionState: 'RESOLVED'
     };
-  },
+  }, 
 };
+
+export const resolutionTools = [
+  // patchTool, 
+  // conflictOverrideTool,
+  // etc.
+];
