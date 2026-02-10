@@ -5,7 +5,11 @@
  */
 import pino from 'pino';
 
-const isBun = typeof Bun !== 'undefined';
+// Don't do this, btw: 
+// const isBun = typeof Bun !== 'undefined';
+// Instead, reliable Bun detection:
+const isBun = process.env.BUN_RUNTIME === '1' || process.argv[0]?.includes('bun');
+
 const MODEL_NAME = process.env.MODEL_NAME || 'qwen2.5:7b';
 
 const logger = (() => {
