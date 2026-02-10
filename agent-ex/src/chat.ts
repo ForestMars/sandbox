@@ -20,8 +20,8 @@ const DEBUG = true;
  */
 export async function startChat() {
   console.log(`Loaded model: ${supportAgentModelSpec}\n`);
-  logger.debug({ model: supportAgentModelSpec }, '>>> LOGGER_CHECK: Chat starting up');
-  logger.debug({ model: supportAgentModelSpec }, 'Chat session initializing');
+  logger.debug({ model: supportAgentModelSpec.model }, '>>> LOGGER_CHECK: Chat starting up');
+  logger.debug({ model: supportAgentModelSpec.model }, 'Chat session initializing');
   const rl = readline.createInterface({ input, output });
 
   // Initialize the global workspace. This lives outside the loop so it persists across multiple turns.
