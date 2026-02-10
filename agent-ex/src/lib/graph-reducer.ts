@@ -8,7 +8,9 @@ import type { AgentEvent } from '@/types/agent-types';
 
 export function rebuildGraph(history: AgentEvent[]): MemoryGraph {
   const graph = new MemoryGraph();
-  const events = [...history].sort((a, b) => a.timestamp - b.timestamp);
+
+  // Ensure correct replay order
+  const events = [...(history || [])].sort((a, b) => a.timestamp - b.timestamp);
 
   for (const event of events) {
     switch (event.type) {

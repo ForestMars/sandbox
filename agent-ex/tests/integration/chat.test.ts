@@ -55,7 +55,13 @@ describe('Chat CLI Logic', () => {
 
     await startChat();
 
-    expect(mockAgent).toHaveBeenCalledWith('hi');
+    expect(mockAgent).toHaveBeenCalledWith(
+    'hi', 
+    expect.objectContaining({
+      id: expect.stringMatching(/^cli-session-/),
+      events: expect.any(Array)
+      })
+    );
     expect(mockInterface.question).toHaveBeenCalledTimes(2);
   });
 });

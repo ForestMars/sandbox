@@ -20,11 +20,6 @@ const TEMPERATURE = 0;
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const instructions = readFileSync(join(__dirname, '..', '..', 'config', 'agent-instructions.txt'), 'utf-8');
 
-const ToolCallSchema = z.object({
-  tool: z.string().optional(),
-  entityId: z.string().or(z.number()).transform(v => String(v))
-});
-
 const supportAgentConfig: AgentConfig = {
   name: 'SupportBot',
   model: process.env.SUPPORT_AGENT_MODEL || DEFAULT_MODEL,
@@ -32,6 +27,11 @@ const supportAgentConfig: AgentConfig = {
   temperature: TEMPERATURE,
   tools: [entityLookupTool]
 };
+
+const toolCallSchema = z.object({
+  tool: z.string().optional(),
+  entityId: z.string().or(z.number()).transform(v => String(v))
+});
 
 async function loadSkill(fileName: string): Promise<string> {
   try {
@@ -56,8 +56,29 @@ export async function* supportAgent(
 ): AsyncGenerator<AgentStep, void, unknown> {
 
   const model = opts?.client || ollama(supportAgentConfig.model);
+ 
+  // @TODO Prompt assembly should be moved into its own function. 
+  // Load Constitution (rebuilds world model from event log.)
+  const coreInstructions = instructions
+  const worldModel = rebuildGraph(session.events);
+  // Fetch skills. (Capability Discovery) Dynamic capabilities can be thought of as decorators on the HOF which provides control plane policy. 
+  // NB. we don't get this from session.activeDomain bc we want to be able to load the entity-resolution skill even if the active domain is something else. 
+  // This allows the agent to acquire new capabilities on the fly based on the current state of the world model, rather than being limited to a single domain's skill set.
+  const graphContext = worldModel.serialize();
+  // const activeSkillContent = session.activeDomain 
+  let domainSkill = "";
+  if (graphContext.includes('UNRESOLVED_CONFLICT')) {
+    domainSkill = await loadSkill('entity-resolution.md');
+  } else if (session.activeDomain) {
+    domainSkill = await loadSkill(`${session.activeDomain}.md`);
+  }
+  const dynamicSystemPrompt = [
+    supportAgentConfig.instructions, // Layer 1: Core Constitution
+    graphContext,                    // Layer 2: State (Knowledge Graph)
+    domainSkill                      // Layer 3: Dynamic Skill (e.g. Entity Resolution))
+    ].join('\n\n');
 
-  // 1. BROADCAST: Initialize and record the User Update to the Data Plane
+  // BROADCAST: Initialize and record the User Update to the Data Plane
   if (!session) throw new Error("No session provided to Agent.");
   if (!session.events) session.events = [];
 
@@ -68,12 +89,9 @@ export async function* supportAgent(
   };
   session.events.push(userEvent);
 
-  // 2. REDUCE: Build the World Model from the append-only log
+  // REDUCR: Build the World Model from the append-only log
   // This allows the agent to "remember" failures across devices.
-  const worldModel = rebuildGraph(session.events);
-
-  // 3. CONTEXT: Serialize the Knowledge Graph for the LLM
-  const graphContext = worldModel.serialize();
+ 
 
   yield { 
     type: 'thinking', 
@@ -86,7 +104,7 @@ export async function* supportAgent(
     specializedSkills = await loadSkill('entity-resolution.md');
   }
 
-  // 4. INFERENCE: Call LLM with instructions and the serialized Graph State
+  // INFERENCE: Call LLM with instructions and the serialized Graph State
   const response = await generateText({
     model,
     system: `${supportAgentConfig.instructions}\n\nCURRENT_KNOWLEDGE_GRAPH:\n${graphContext}`,
@@ -99,17 +117,17 @@ export async function* supportAgent(
 
   let toolCall = null;
 
-  // Extract JSON tool calls (The "Control Plane" intent)
+  // Extract JSON tool calls Control Plane intent
   const jsonMatch = text.match(/\{[\s\S]*\}/);
   if (jsonMatch) {
     try {
       const parsed = JSON.parse(jsonMatch[0]);
-      const validated = ToolCallSchema.safeParse(parsed);
+      const validated = toolCallSchema.safeParse(parsed);
       if (validated.success) toolCall = validated.data;
     } catch (e) { /* Fallback to conversational */ }
   }
 
-  // 5. EXECUTION & BROADCAST
+  // EXECUTION & BROADCAST
   if (toolCall) {
     const { entityId } = toolCall;
     const toolId = toolCall.tool || 'entity-lookup';
@@ -119,17 +137,18 @@ export async function* supportAgent(
     // Execute the tool (The "Oracle" call)
     const result = await entityLookupTool.execute({ entityId });
 
-    // BROADCAST the tool result back to the session log
-    // This is the key to preventing the 999 loop on re-hydration!
+    // BROADCAST tool result to data plane;
+    // This is key to preventing the endeless loops on re-hydration.
     session.events.push({
       type: 'TOOL_RESULT',
       payload: { toolId, entityId, result },
       timestamp: Date.now()
-    });
+    }); 
 
     yield { type: 'tool_result', timestamp: Date.now(), toolId, result };
 
     const updatedWorldModel = rebuildGraph(session.events);
+    
     // Final Synthesis using the updated tool data
     const finalResponse = await generateText({
       model,

@@ -1,5 +1,5 @@
 import { test, expect } from 'bun:test';
-import { supportAgent } from '../../src/agents/support-agent';
+import { supportAgent } from '@/agents/support-agent';
 
 const TEST_TIMEOUT = 90000; 
 
