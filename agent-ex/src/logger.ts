@@ -6,20 +6,21 @@
 import pino from 'pino';
 
 // Don't do this, btw: 
-// const isBun = typeof Bun !== 'undefined';
-// Instead, reliable Bun detection:
-const isBun = process.env.BUN_RUNTIME === '1' || process.argv[0]?.includes('bun');
+// const isBun = process.env.BUN_RUNTIME === '1' || process.argv[0]?.includes('bun');
+// The above is unreliable. 'typeof Bun' is best-by-test robust check for the global runtime.
+const isBun = typeof Bun !== 'undefined';
 
 const MODEL_NAME = process.env.MODEL_NAME || 'qwen2.5:7b';
 
-const logger = (() => {
-  if (isBun) {
+let logger;
+
+if (isBun) {
     // DEV/BUN: Main-thread stream for instant terminal feedback
     // Dynamic require prevents production crashes if pino-pretty is a devDependency
-    const pretty = require('pino-pretty');
+    // Don't use require which can cause type & bundle issues. Bun supports top-level await:
+    const { default: pretty } = await import('pino-pretty');
     
-    return pino(
-      {
+    logger = pino({
         level: 'debug',
         base: { 
           model: MODEL_NAME,
@@ -33,9 +34,9 @@ const logger = (() => {
         ignore: 'pid,hostname,model,runtime' // Keeps "Joe" out of your terminal
       })
     );
-  } else {
+} else {
     // NODE/PRODUCTION: High-performance JSON output
-    return pino({
+    logger = pino({
       level: 'info',
       base: { 
         model: MODEL_NAME,
@@ -43,7 +44,6 @@ const logger = (() => {
       }
       // No transport here = direct raw JSON to stdout (best for Datadog)
     });
-  }
-})();
+}
 
 export { logger };
