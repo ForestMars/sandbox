@@ -3,9 +3,13 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "chat": "tsx src/chat.ts",
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "agent:test": "tsx src/test-agent.ts"
+    "chat": "bun src/chat.ts",
+    "agent:test": "bun tests/test-agent.ts",
+    "test": "bun test ./tests/e2e/e2e.test.ts",
+    "tests": "bun test ./tests/**/*.test.ts",
+    "tests:int": "bun test ./tests/integration/*.test.ts",
+    "tests:unit": "bun test ./tests/unit/*.test.ts",
+    "test:cov": "bun test --coverage ./src/**/*.test.ts ./tests/**/*.test.ts"
   },
   "keywords": [],
   "author": "",

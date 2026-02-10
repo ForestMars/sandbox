@@ -20,7 +20,7 @@ This section documents the key differences between the `Mastra` agent `generate(
   {
     "text": "Order #12345 status: Shipped",
     "steps": [
-      { "finishReason": "tool", "text": "Called tool orderLookupTool", "toolCalls": [{"toolId":"orderLookupTool","result":{"status":"Shipped"}}] }
+      { "finishReason": "tool", "text": "Called tool entityLookupTool", "toolCalls": [{"toolId":"entityLookupTool","result":{"status":"Shipped"}}] }
     ]
   }
   ```
@@ -45,7 +45,7 @@ This section documents the key differences between the `Mastra` agent `generate(
 - Under the hood the `generate()` function should be replaced by direct calls to your chosen SDK (Vercel AI SDK or similar). The wrapper must:
   1. Send messages to the SDK and receive the raw response.
  2. Inspect the response for tool-invocation intents.
- 3. Execute any matching tool (e.g., `orderLookupTool.execute`) and collect results.
+3. Execute any matching tool (e.g., `entityLookupTool.execute`) and collect results.
  4. Optionally send a follow-up model call including tool results to produce the final `text`.
  5. Return `{ text, steps }` to match previous behavior.
 
@@ -55,6 +55,6 @@ This section documents the key differences between the `Mastra` agent `generate(
 
   1. Add `@vercel/ai` (or your SDK of choice) to `package.json`.
   2. In `src/agents/support-agent.ts`, call the SDK's `predict`/`generate` with the conversation and instructions.
-  3. Parse the SDK response for tool intents, call `orderLookupTool.execute`, and synthesize the final answer.
+  3. Parse the SDK response for tool intents, call `entityLookupTool.execute`, and synthesize the final answer.
 
 If you'd like, I can implement the Vercel AI SDK integration and update `supportAgent.generate()` to call it and fully remove the compatibility shim. Want me to proceed with that now?

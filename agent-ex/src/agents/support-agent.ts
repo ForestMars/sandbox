@@ -1,205 +1,230 @@
-// src/agents/support-agent.ts
+/**
+ * @file support-agent.ts
+ * @description Event-Sourced Graph-Based Support Agent.
+ */
 
 import { generateText } from 'ai';
 import { ollama } from 'ai-sdk-ollama';
-import { orderLookupTool } from '../tools/order-tools';
+import { entityLookupTool } from '@/tools/order-tools';
 import { readFileSync } from 'fs';
-import { join } from 'path';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
 import { z } from 'zod';
-import type { 
-  AgentStep, 
-  AgentConfig,
-  Tool 
-} from '../types/agent-types';
+import { rebuildGraph } from '@/lib/graph-reducer';
+import type { AgentStep, AgentConfig, AgentSession, AgentEvent } from '@/types/agent-types';
+import { resolveProtocol } from '@/lib/protocol-resolver';
+import { CONTEXT_ANCHOR } from '@/agents/config';
 
-const active_model = 'qwen2.5:7b';
-const instructions = readFileSync(
-  join(process.cwd(), 'config', 'agent-instructions.txt'),
-  'utf-8'
-);
-const DEBUG = process.env.DEBUG === 'true';
+// --- CONFIGURATION ---
+const DEFAULT_MODEL = 'qwen2.5:7b';
+const TEMPERATURE = 0; 
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const instructions = readFileSync(join(__dirname, '..', '..', 'config', 'agent-instructions.txt'), 'utf-8');
+
+const supportAgentConfig: AgentConfig = {
+  name: 'SupportBot',
+  model: process.env.SUPPORT_AGENT_MODEL || DEFAULT_MODEL,
+  instructions,
+  temperature: TEMPERATURE,
+  tools: [entityLookupTool]
+};
+
+const toolCallSchema = z.object({
+  tool: z.string(),
+  entityId: z.string().or(z.number()).transform(v => String(v))
+});
+
+// --- HELPERS ---
 
 /**
- * LLM response structure
+ * Reconstruct a human-readable conversation history from the event log.
+ * This is what gives the LLM a coherent "memory" of the conversation —
+ * structured graph state alone is not enough for the model to resolve
+ * pronoun/entity references across turns.
  */
-interface LLMResponse {
-  text: string;
+function buildConversationHistory(events: AgentEvent[]): string {
+  return events
+    .filter(e => e.type === 'USER_UPDATE' || e.type === 'TOOL_RESULT')
+    .map(e => {
+      if (e.type === 'USER_UPDATE') {
+        return `User: ${e.payload.text}`;
+      }
+      if (e.type === 'TOOL_RESULT') {
+        return `System: Retrieved entity ${e.payload.entityId} → ${JSON.stringify(e.payload.result)}`;
+      }
+      return null;
+    })
+    .filter(Boolean)
+    .join('\n');
 }
 
 /**
- * Tool call request from LLM
- */
-const ToolCallRequestSchema = z.object({
-  tool: z.string(),
-  orderId: z.string()
-});
-
-type ToolCallRequest = z.infer<typeof ToolCallRequestSchema>;
-
-/**
- * Support agent configuration
- */
-const supportAgentConfig: AgentConfig = {
-  name: 'SupportBot',
-  model: process.env.SUPPORT_AGENT_MODEL || active_model,
-  instructions,
-  tools: [orderLookupTool]
-};
-
-/**
- * Generator-based support agent
- * 
- * Yields steps as execution progresses:
- * 1. thinking - Initial processing
- * 2. llm_response - LLM returned text/tool request
- * 3. tool_call - Executing a tool (if needed)
- * 4. tool_result - Tool execution complete (if tool was called)
- * 5. final - Natural language response ready
- * 
- * @param userInput - User's message
- * @param opts - Optional configuration
+ * Generator-based support agent using Global Workspace Theory.
  */
 export async function* supportAgent(
   userInput: string,
-  opts?: { client?: unknown }
+  session: AgentSession,
+  opts?: { client?: any }
 ): AsyncGenerator<AgentStep, void, unknown> {
-  
-  // Dev greeting shortcut
-  if (process.env.MODE === "dev" && /^\s*(hi|hello|hey|are you there)\s*$/i.test(userInput)) {
-    yield {
-      type: 'final',
-      timestamp: Date.now(),
-      text: "SupportBot: Hello! How can I help you today?"
-    };
-    return;
-  }
+
+  if (!session) throw new Error("No session provided to Agent.");
+  if (!session.events) session.events = [];
 
   const model = opts?.client || ollama(supportAgentConfig.model);
-  const prompt = `${supportAgentConfig.instructions}\n\nUser: ${userInput}\nAssistant:`;
 
-  // Step 1: Initial LLM call
-  yield {
-    type: 'thinking',
-    timestamp: Date.now(),
-    message: 'Processing your request...'
+  // BROADCAST: Initialize and record the User Update to the Data Plane.
+  // NOTE: We push to the event log BEFORE calling rebuildGraph so that
+  // the current user message is visible to the router and world model.
+  const userEvent: AgentEvent = { 
+    type: 'USER_UPDATE', 
+    payload: { text: userInput }, 
+    timestamp: Date.now() 
+  };
+  session.events.push(userEvent);
+
+  // REDUCR: Build the World Model from the append-only log.
+  // This allows the agent to "remember" failures across devices.
+  const worldModel = rebuildGraph(session.events);
+  const graphContext = worldModel.serialize();
+
+  // Use the central brain we built to decide how to act.
+  const protocol = resolveProtocol(graphContext, session.activeDomain);
+
+  console.log(`===========================[ROUTER] Engaging ${protocol.name} protocol.`);
+
+  yield { 
+    type: 'thinking', 
+    timestamp: Date.now(), 
+    message: 'Consulting internal knowledge graph...' 
   };
 
-  let llmResponse: LLMResponse;
-  try {
-    llmResponse = await generateText({ model, prompt }) as LLMResponse;
-  } catch (e) {
-    const errorMessage = e instanceof Error ? e.message : String(e);
-    yield {
-      type: 'final',
-      timestamp: Date.now(),
-      text: `Sorry, something went wrong: ${errorMessage}`
-    };
-    return;
+  console.log(`[DEBUG] Protocol System Prompt Length: ${protocol.systemPrompt?.length}`);
+  console.log(`[DEBUG] Full System Prompt Sample: "${protocol.systemPrompt?.substring(0, 100)}..."`);
+  console.log(`[DEBUG] EVENT_LOG_LENGTH: ${session.events.length}`);
+  console.log(`[DEBUG] RECENT_EVENTS: ${JSON.stringify(session.events.slice(-2))}`);
+  console.log(`[DEBUG] GRAPH_CONTEXT_SENT: """\n${graphContext}\n"""`);
+
+  // INFERENCE: Call LLM with instructions and the serialized Graph State.
+  // Prompt ordering matters for small models — place behavioral instructions
+  // before the data they govern, and gate the graph with an explicit instruction
+  // so the model treats it as authoritative memory, not just metadata.
+  const systemPrompt = [
+    instructions,           // Constitution — who you are, non-negotiables
+    protocol.systemPrompt,  // What to do RIGHT NOW — close to the data it governs
+    CONTEXT_ANCHOR,         // How to interpret what follows
+    `### CURRENT KNOWLEDGE_GRAPH\n` +
+    `The following represents your memory of this conversation. ` +
+    `All entity IDs and states here are established facts — ` +
+    `do NOT ask the user to re-provide information already present here.\n`,
+    graphContext,           // The World Model — last thing read, most salient
+  ].filter(Boolean).join('\n\n');
+
+  // Include reconstructed conversation history in the prompt so the model
+  // can resolve cross-turn references (e.g. "it" → order #999).
+  // Without this, the model has no conversational grounding — structured
+  // graph state alone is not sufficient for pronoun/entity resolution.
+  const conversationHistory = buildConversationHistory(session.events);
+  const fullPrompt = conversationHistory
+    ? `${conversationHistory}\nUser: ${userInput}`
+    : userInput;
+
+  const response = await generateText({
+    model,
+    system: systemPrompt,
+    tools: protocol.tools, 
+    prompt: fullPrompt,
+    temperature: supportAgentConfig.temperature
+  });
+
+  const text = response.text.trim();
+  console.log(`\n[DEBUG] LLM Raw Output (Text Content): """\n${text}\n"""\n`);
+  if (response.toolCalls.length > 0) {
+    console.log(`\n[DEBUG] @@@@@@ Native Tool Calls Found:`, JSON.stringify(response.toolCalls, null, 2));
   }
 
-  const llmText = llmResponse?.text || '';
+  // TOOL CALL EXTRACTION
+  // Priority 1: Native tool calls from the AI SDK
+  let toolCall: { tool: string; entityId: string } | null = null;
 
-  // Step 2: Yield LLM response
-  yield {
-    type: 'llm_response',
-    timestamp: Date.now(),
-    text: llmText,
-    raw: llmResponse
-  };
+  if (response.toolCalls && response.toolCalls.length > 0) {
+    const call = response.toolCalls[0];
 
-  // Step 3: Check for tool call
-  let toolCallRequested: ToolCallRequest | null = null;
-  try {
-    const parsed = JSON.parse(llmText);
-    const validated = ToolCallRequestSchema.safeParse(parsed);
-    
-    if (validated.success) {
-      // Find the matching tool
-      const tool = supportAgentConfig.tools.find(t => t.id === validated.data.tool);
-      if (tool) {
-        toolCallRequested = validated.data;
+    // toolName === '0' is a known provider variant — see issue tracker
+    const isLookup = call.toolName === 'entity-lookup' || call.toolName === '0';
+
+    if (isLookup) {
+      // Defensively find the arguments object.
+      // Checks .args (standard AI SDK) OR .input (seen in some provider variants)
+      const args = (call.args || (call as any).input || {}) as any;
+      const rawId = args.entityId || args.order_id || args.order_number || args.id;
+
+      if (rawId !== undefined) {
+        toolCall = {
+          tool: 'entity-lookup',
+          entityId: String(rawId)
+        };
       }
-    }
-  } catch {
-    // Not a tool call - treat as final response
+    } 
   }
 
-  // Step 4 & 5: Execute tool if requested
-  if (toolCallRequested) {
-    // Yield tool call step
-    yield {
-      type: 'tool_call',
-      timestamp: Date.now(),
-      toolId: orderLookupTool.id,
-      toolName: orderLookupTool.name,
-      parameters: { orderId: toolCallRequested.orderId }
-    };
-
-    // Execute tool
-    let toolResult: unknown;
-    try {
-      toolResult = await orderLookupTool.execute({ orderId: toolCallRequested.orderId });
-      
-      // Yield tool result
-      yield {
-        type: 'tool_result',
-        timestamp: Date.now(),
-        toolId: orderLookupTool.id,
-        result: toolResult
-      };
-    } catch (e) {
-      const errorMessage = e instanceof Error ? e.message : String(e);
-      yield {
-        type: 'tool_result',
-        timestamp: Date.now(),
-        toolId: orderLookupTool.id,
-        result: null,
-        error: errorMessage
-      };
-      
-      yield {
-        type: 'final',
-        timestamp: Date.now(),
-        text: `Sorry, I encountered an error looking up that information: ${errorMessage}`
-      };
-      return;
+  // Priority 2: JSON embedded in text output
+  // REGEX FALLBACK — only if native extraction failed
+  if (!toolCall && text) {
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      try {
+        const validated = toolCallSchema.safeParse(JSON.parse(jsonMatch[0]));
+        if (validated.success) toolCall = validated.data;
+      } catch (e) { /* Fallback to conversational */ }
     }
+  }
 
-    // Step 6: Synthesize natural language response
-    yield {
-      type: 'thinking',
-      timestamp: Date.now(),
-      message: 'Generating response...'
-    };
+  // EXECUTION & BROADCAST
+  if (toolCall) {
+    const { entityId } = toolCall;
+    const toolId = toolCall.tool;
 
-    const followUpPrompt = `${supportAgentConfig.instructions}\n\nUser: ${userInput}\n\nTool Result: ${JSON.stringify(toolResult)}\n\nAssistant:`;
-    
-    try {
-      const followUpResp = await generateText({ model, prompt: followUpPrompt }) as LLMResponse;
-      
-      yield {
-        type: 'final',
-        timestamp: Date.now(),
-        text: followUpResp?.text || JSON.stringify(toolResult)
-      };
-    } catch (e) {
-      const errorMessage = e instanceof Error ? e.message : String(e);
-      // Fallback to raw tool result
-      yield {
-        type: 'final',
-        timestamp: Date.now(),
-        text: JSON.stringify(toolResult)
-      };
-    }
+    yield { type: 'tool_call', timestamp: Date.now(), toolId, parameters: { entityId } };
+
+    // Execute the tool (The "Oracle" call)
+    const result = await entityLookupTool.execute({ entityId });
+
+    // BROADCAST tool result to data plane.
+    // This is key to preventing endless loops on re-hydration.
+    session.events.push({
+      type: 'TOOL_RESULT',
+      payload: { toolId, entityId, result },
+      timestamp: Date.now()
+    }); 
+
+    yield { type: 'tool_result', timestamp: Date.now(), toolId, result };
+
+    // Rebuild with the tool result now included so the final synthesis
+    // prompt reflects the fully updated world state.
+    const updatedGraphContext = rebuildGraph(session.events).serialize();
+    const historyWithResult = buildConversationHistory(session.events);
+
+    // Final Synthesis using the updated tool data
+    const finalResponse = await generateText({
+      model,
+      system: [
+        protocol.systemPrompt,
+        `### CURRENT KNOWLEDGE_GRAPH\n` +
+        `Do NOT ask the user for information already present here.\n` +
+        updatedGraphContext,
+      ].filter(Boolean).join('\n\n'),
+      prompt: `${historyWithResult}\n\nBased on the above, summarize the situation for the user.`,
+      temperature: supportAgentConfig.temperature
+    });
+
+    console.log('[DEBUG] ToolCalls found:', response.toolCalls);
+    console.log('[DEBUG] Raw Text found:', response.text);
+
+    yield { type: 'final', timestamp: Date.now(), text: finalResponse.text };
   } else {
-    // No tool needed - LLM response is the final answer
-    yield {
-      type: 'final',
-      timestamp: Date.now(),
-      text: llmText
-    };
+    yield { type: 'final', timestamp: Date.now(), text };
   }
 }
 
-// Export config for backwards compatibility
 export const supportAgentModelSpec = supportAgentConfig.model;
