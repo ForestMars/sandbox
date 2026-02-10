@@ -16,7 +16,8 @@ import { resolveProtocol } from '@/lib/protocol-resolver';
 import { CONTEXT_ANCHOR } from '@/agents/config';
 
 // --- CONFIGURATION ---
-const DEFAULT_MODEL = 'qwen2.5:7b';
+const DEFAULT_MODEL = 'qwen2.5:7b'; // AGENT_MODEL
+const FACTUTUM_MODEL = 'qwen2.5:1.5b';
 const TEMPERATURE = 0; 
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
