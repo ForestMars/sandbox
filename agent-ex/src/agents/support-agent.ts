@@ -13,6 +13,7 @@ import { z } from 'zod';
 import { rebuildGraph } from '@/lib/graph-reducer';
 import type { AgentStep, AgentConfig, AgentSession, AgentEvent } from '@/types/agent-types';
 import { resolveProtocol } from '@/lib/protocol-resolver';
+import { CONTEXT_ANCHOR } from '@/agents/config';
 
 // --- CONFIGURATION ---
 const DEFAULT_MODEL = 'qwen2.5:7b';
@@ -34,19 +35,6 @@ const toolCallSchema = z.object({
   entityId: z.string().or(z.number()).transform(v => String(v))
 });
 
-async function loadSkill(fileName: string): Promise<string> {
-  try {
-    // Use the __dirname we already have to build an absolute path
-    const skillPath = join(__dirname, 'skills', fileName);
-    const content = readFileSync(skillPath, 'utf-8');
-    console.log(`[DEBUG] Successfully loaded skill: ${fileName}`);
-    return content;
-  } catch (error) {
-    console.error(`[ERROR] Failed to load skill at ${join(__dirname, 'skills', fileName)}`);
-    return ""; 
-  }
-}
-
 /**
  * Generator-based support agent using Global Workspace Theory.
  */
@@ -58,37 +46,22 @@ export async function* supportAgent(
 
   const model = opts?.client || ollama(supportAgentConfig.model);
  
-  // @TODO Prompt assembly should be moved into its own function. 
-  // Load Constitution (rebuilds world model from event log.)
-  const coreInstructions = instructions
-  
   // REDUCR: Build the World Model from the append-only log
   // This allows the agent to "remember" failures across devices.
-  const worldModel = rebuildGraph(session.events);
-  const { skill, tools, name } = resolveProtocol(worldModel.serialize(), session.activeDomain);
-  console.log(`[ROUTER] Engaging ${name} protocol.`);
-
-  // Capability Discovery - Dynamic capabilities can be thought of as decorators on the HOF which provides control plane policy. 
-  // NB. we don't get this from session.activeDomain bc we want to be able to load the entity-resolution skill even if the active domain is something else. 
-  // This allows the agent to acquire new capabilities on the fly based on the current state of the world model, rather than being limited to a single domain's skill set.
-  // const activeSkillContent = session.activeDomain 
-  const graphContext = worldModel.serialize();
-  let domainSkill = "";
-  if (graphContext.includes('UNRESOLVED_CONFLICT')) {
-    domainSkill = await loadSkill('entity-resolution.md');
-  } else if (session.activeDomain) {
-    domainSkill = await loadSkill(`${session.activeDomain}.md`);
-  }
-  const dynamicSystemPrompt = [
-    supportAgentConfig.instructions, // Layer 1: Core Constitution
-    graphContext,                    // Layer 2: State (Knowledge Graph)
-    domainSkill                      // Layer 3: Dynamic Skill (e.g. Entity Resolution))
-    ].join('\n\n');
-
-  // BROADCAST: Initialize and record the User Update to the Data Plane
   if (!session) throw new Error("No session provided to Agent.");
   if (!session.events) session.events = [];
+  const worldModel = rebuildGraph(session.events);
+  const graphContext = worldModel.serialize();
+  console.log(`%c[DEBUG] Rebuilt World Model with ${JSON.stringify(graphContext)}`, 'color: cyan');
 
+  // Use the central brain we built to decide how to act.
+  // const { systemPrompt, tools, name } = resolveProtocol(worldModel.serialize(), session.activeDomain);
+  const protocol = resolveProtocol(graphContext, session.activeDomain);
+
+  console.log(`[ROUTER] Engaging ${protocol.name} protocol.`);
+
+  // BROADCAST: Initialize and record the User Update to the Data Plane
+  
   const userEvent: AgentEvent = { 
     type: 'USER_UPDATE', 
     payload: { text: userInput }, 
@@ -102,34 +75,84 @@ export async function* supportAgent(
     message: 'Consulting internal knowledge graph...' 
   };
 
-  let specializedSkills = "";
-  if (worldModel.serialize().includes('UNRESOLVED_CONFLICT')) {
-    specializedSkills = await loadSkill('entity-resolution.md');
-  }
+  console.log(`[DEBUG] Protocol System Prompt Length: ${protocol.systemPrompt?.length}`);
+  console.log(`[DEBUG] Full System Prompt Sample: "${protocol.systemPrompt?.substring(0, 100)}..."`);
 
   // INFERENCE: Call LLM with instructions and the serialized Graph State
+
+  
+
+
+  const finalSystemPrompt = [
+    instructions,
+    protocol.systemPrompt,
+    CONTEXT_ANCHOR,
+    `### CURRENT KNOWLEDGE_GRAPH`, 
+    graphContext, 
+  ].filter(Boolean).join('\n\n');
+
+
+  console.log(`[DEBUG] EVENT_LOG_LENGTH: ${session.events?.length}`);
+  console.log(`[DEBUG] RECENT_EVENTS: ${JSON.stringify(session.events?.slice(-2))}`);
+  console.log(`[DEBUG] GRAPH_CONTEXT_SENT: """\n${graphContext}\n"""`);
+
   const response = await generateText({
     model,
-    // system: `${supportAgentConfig.instructions}\n\nCURRENT_KNOWLEDGE_GRAPH:\n${graphContext}`,
-    system: `${style}\n\n${skill}\n\n${worldModel.serialize()}`,
-    tools: tools, 
+    // system: `${protocol.systemPrompt}\n\nCURRENT_KNOWLEDGE_GRAPH:\n${graphContext}`,
+    system: [
+      instructions,           // Constitution
+      finalSystemPrompt,      // Resolver and Router logic
+      graphContext            // The World Model (Knoledge Graph State)
+    ].filter(Boolean).join('\n\n'),
+    tools: protocol.tools, 
     prompt: userInput,
     temperature: supportAgentConfig.temperature
   });
 
   const text = response.text.trim();
-  console.log(`\n[DEBUG] LLM Raw Output: """\n${text}\n"""\n`);
+  console.log(`\n[DEBUG] LLM Raw Output (Text Content): """\n${text}\n"""\n`);
+  if (response.toolCalls.length > 0) {
+    console.log(`\n[DEBUG] @@@@@@ Native Tool Calls Found:`, JSON.stringify(response.toolCalls, null, 2));
+  }
 
   let toolCall = null;
 
-  // Extract JSON tool calls from Control Plane intent
-  const jsonMatch = text.match(/\{[\s\S]*\}/);
-  if (jsonMatch) {
-    try {
-      const parsed = JSON.parse(jsonMatch[0]);
-      const validated = toolCallSchema.safeParse(parsed);
-      if (validated.success) toolCall = validated.data;
-    } catch (e) { /* Fallback to conversational */ }
+  if (response.toolCalls && response.toolCalls.length > 0) {
+      const call = response.toolCalls[0];
+
+      const isLookup = call.toolName === 'entity-lookup' || call.toolName === '0';
+
+      if (isLookup) {
+    // Defensively find the arguments object
+    // Checks .args (standard AI SDK) OR .input (seen in your logs)
+    const args = (call.args || (call as any).input || {}) as any;
+
+      toolCall = {
+        tool: 'entity-lookup',
+        // Gotta catch em all...
+        entityId: String(
+          args.entityId || 
+          args.order_id || 
+          args.order_number || 
+          args.id || 
+          "UNKNOWN"
+        )
+      }
+    } 
+  }
+  // If you thought that last one was hacky...
+  // REGEX FALLBACK (Only if native fails)
+  if (!toolCall) {
+    const text = response.text.trim();
+
+    // Extract JSON tool calls from Control Plane intent
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      try {
+        const validated = toolCallSchema.safeParse(JSON.parse(jsonMatch[0]));
+        if (validated.success) toolCall = validated.data;
+      } catch (e) {}
+    }
   }
 
   // EXECUTION & BROADCAST
@@ -157,11 +180,13 @@ export async function* supportAgent(
     // Final Synthesis using the updated tool data
     const finalResponse = await generateText({
       model,
-      // system: supportAgentConfig.instructions,
-      system: `${supportAgentConfig.instructions}\n\n${worldModel.serialize()}`,
+      system: protocol.systemPrompt,
       prompt: `User: ${userInput}\nTool Result: ${JSON.stringify(result)}\n\nSummarize for user:`,
       temperature: supportAgentConfig.temperature
     });
+
+    console.log('[DEBUG] ToolCalls found:', response.toolCalls);
+    console.log('[DEBUG] Raw Text found:', response.text);
 
     yield { type: 'final', timestamp: Date.now(), text: finalResponse.text };
   } else {
