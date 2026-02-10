@@ -31,9 +31,33 @@ const supportAgentConfig: AgentConfig = {
 };
 
 const toolCallSchema = z.object({
-  tool: z.string().optional(),
+  tool: z.string(),
   entityId: z.string().or(z.number()).transform(v => String(v))
 });
+
+// --- HELPERS ---
+
+/**
+ * Reconstruct a human-readable conversation history from the event log.
+ * This is what gives the LLM a coherent "memory" of the conversation —
+ * structured graph state alone is not enough for the model to resolve
+ * pronoun/entity references across turns.
+ */
+function buildConversationHistory(events: AgentEvent[]): string {
+  return events
+    .filter(e => e.type === 'USER_UPDATE' || e.type === 'TOOL_RESULT')
+    .map(e => {
+      if (e.type === 'USER_UPDATE') {
+        return `User: ${e.payload.text}`;
+      }
+      if (e.type === 'TOOL_RESULT') {
+        return `System: Retrieved entity ${e.payload.entityId} → ${JSON.stringify(e.payload.result)}`;
+      }
+      return null;
+    })
+    .filter(Boolean)
+    .join('\n');
+}
 
 /**
  * Generator-based support agent using Global Workspace Theory.
@@ -44,30 +68,30 @@ export async function* supportAgent(
   opts?: { client?: any }
 ): AsyncGenerator<AgentStep, void, unknown> {
 
-  const model = opts?.client || ollama(supportAgentConfig.model);
- 
-  // REDUCR: Build the World Model from the append-only log
-  // This allows the agent to "remember" failures across devices.
   if (!session) throw new Error("No session provided to Agent.");
   if (!session.events) session.events = [];
-  const worldModel = rebuildGraph(session.events);
-  const graphContext = worldModel.serialize();
-  console.log(`%c[DEBUG] Rebuilt World Model with ${JSON.stringify(graphContext)}`, 'color: cyan');
 
-  // Use the central brain we built to decide how to act.
-  // const { systemPrompt, tools, name } = resolveProtocol(worldModel.serialize(), session.activeDomain);
-  const protocol = resolveProtocol(graphContext, session.activeDomain);
+  const model = opts?.client || ollama(supportAgentConfig.model);
 
-  console.log(`[ROUTER] Engaging ${protocol.name} protocol.`);
-
-  // BROADCAST: Initialize and record the User Update to the Data Plane
-  
+  // BROADCAST: Initialize and record the User Update to the Data Plane.
+  // NOTE: We push to the event log BEFORE calling rebuildGraph so that
+  // the current user message is visible to the router and world model.
   const userEvent: AgentEvent = { 
     type: 'USER_UPDATE', 
     payload: { text: userInput }, 
     timestamp: Date.now() 
   };
   session.events.push(userEvent);
+
+  // REDUCR: Build the World Model from the append-only log.
+  // This allows the agent to "remember" failures across devices.
+  const worldModel = rebuildGraph(session.events);
+  const graphContext = worldModel.serialize();
+
+  // Use the central brain we built to decide how to act.
+  const protocol = resolveProtocol(graphContext, session.activeDomain);
+
+  console.log(`===========================[ROUTER] Engaging ${protocol.name} protocol.`);
 
   yield { 
     type: 'thinking', 
@@ -77,35 +101,39 @@ export async function* supportAgent(
 
   console.log(`[DEBUG] Protocol System Prompt Length: ${protocol.systemPrompt?.length}`);
   console.log(`[DEBUG] Full System Prompt Sample: "${protocol.systemPrompt?.substring(0, 100)}..."`);
+  console.log(`[DEBUG] EVENT_LOG_LENGTH: ${session.events.length}`);
+  console.log(`[DEBUG] RECENT_EVENTS: ${JSON.stringify(session.events.slice(-2))}`);
+  console.log(`[DEBUG] GRAPH_CONTEXT_SENT: """\n${graphContext}\n"""`);
 
-  // INFERENCE: Call LLM with instructions and the serialized Graph State
-
-  
-
-
-  const finalSystemPrompt = [
-    instructions,
-    protocol.systemPrompt,
-    CONTEXT_ANCHOR,
-    `### CURRENT KNOWLEDGE_GRAPH`, 
-    graphContext, 
+  // INFERENCE: Call LLM with instructions and the serialized Graph State.
+  // Prompt ordering matters for small models — place behavioral instructions
+  // before the data they govern, and gate the graph with an explicit instruction
+  // so the model treats it as authoritative memory, not just metadata.
+  const systemPrompt = [
+    instructions,           // Constitution — who you are, non-negotiables
+    protocol.systemPrompt,  // What to do RIGHT NOW — close to the data it governs
+    CONTEXT_ANCHOR,         // How to interpret what follows
+    `### CURRENT KNOWLEDGE_GRAPH\n` +
+    `The following represents your memory of this conversation. ` +
+    `All entity IDs and states here are established facts — ` +
+    `do NOT ask the user to re-provide information already present here.\n`,
+    graphContext,           // The World Model — last thing read, most salient
   ].filter(Boolean).join('\n\n');
 
-
-  console.log(`[DEBUG] EVENT_LOG_LENGTH: ${session.events?.length}`);
-  console.log(`[DEBUG] RECENT_EVENTS: ${JSON.stringify(session.events?.slice(-2))}`);
-  console.log(`[DEBUG] GRAPH_CONTEXT_SENT: """\n${graphContext}\n"""`);
+  // Include reconstructed conversation history in the prompt so the model
+  // can resolve cross-turn references (e.g. "it" → order #999).
+  // Without this, the model has no conversational grounding — structured
+  // graph state alone is not sufficient for pronoun/entity resolution.
+  const conversationHistory = buildConversationHistory(session.events);
+  const fullPrompt = conversationHistory
+    ? `${conversationHistory}\nUser: ${userInput}`
+    : userInput;
 
   const response = await generateText({
     model,
-    // system: `${protocol.systemPrompt}\n\nCURRENT_KNOWLEDGE_GRAPH:\n${graphContext}`,
-    system: [
-      instructions,           // Constitution
-      finalSystemPrompt,      // Resolver and Router logic
-      graphContext            // The World Model (Knoledge Graph State)
-    ].filter(Boolean).join('\n\n'),
+    system: systemPrompt,
     tools: protocol.tools, 
-    prompt: userInput,
+    prompt: fullPrompt,
     temperature: supportAgentConfig.temperature
   });
 
@@ -115,58 +143,55 @@ export async function* supportAgent(
     console.log(`\n[DEBUG] @@@@@@ Native Tool Calls Found:`, JSON.stringify(response.toolCalls, null, 2));
   }
 
-  let toolCall = null;
+  // TOOL CALL EXTRACTION
+  // Priority 1: Native tool calls from the AI SDK
+  let toolCall: { tool: string; entityId: string } | null = null;
 
   if (response.toolCalls && response.toolCalls.length > 0) {
-      const call = response.toolCalls[0];
+    const call = response.toolCalls[0];
 
-      const isLookup = call.toolName === 'entity-lookup' || call.toolName === '0';
+    // toolName === '0' is a known provider variant — see issue tracker
+    const isLookup = call.toolName === 'entity-lookup' || call.toolName === '0';
 
-      if (isLookup) {
-    // Defensively find the arguments object
-    // Checks .args (standard AI SDK) OR .input (seen in your logs)
-    const args = (call.args || (call as any).input || {}) as any;
+    if (isLookup) {
+      // Defensively find the arguments object.
+      // Checks .args (standard AI SDK) OR .input (seen in some provider variants)
+      const args = (call.args || (call as any).input || {}) as any;
+      const rawId = args.entityId || args.order_id || args.order_number || args.id;
 
-      toolCall = {
-        tool: 'entity-lookup',
-        // Gotta catch em all...
-        entityId: String(
-          args.entityId || 
-          args.order_id || 
-          args.order_number || 
-          args.id || 
-          "UNKNOWN"
-        )
+      if (rawId !== undefined) {
+        toolCall = {
+          tool: 'entity-lookup',
+          entityId: String(rawId)
+        };
       }
     } 
   }
-  // If you thought that last one was hacky...
-  // REGEX FALLBACK (Only if native fails)
-  if (!toolCall) {
-    const text = response.text.trim();
 
-    // Extract JSON tool calls from Control Plane intent
+  // Priority 2: JSON embedded in text output
+  // REGEX FALLBACK — only if native extraction failed
+  if (!toolCall && text) {
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
       try {
         const validated = toolCallSchema.safeParse(JSON.parse(jsonMatch[0]));
         if (validated.success) toolCall = validated.data;
-      } catch (e) {}
+      } catch (e) { /* Fallback to conversational */ }
     }
   }
 
   // EXECUTION & BROADCAST
   if (toolCall) {
     const { entityId } = toolCall;
-    const toolId = toolCall.tool || 'entity-lookup';
+    const toolId = toolCall.tool;
 
     yield { type: 'tool_call', timestamp: Date.now(), toolId, parameters: { entityId } };
 
     // Execute the tool (The "Oracle" call)
     const result = await entityLookupTool.execute({ entityId });
 
-    // BROADCAST tool result to data plane;
-    // This is key to preventing the endeless loops on re-hydration.
+    // BROADCAST tool result to data plane.
+    // This is key to preventing endless loops on re-hydration.
     session.events.push({
       type: 'TOOL_RESULT',
       payload: { toolId, entityId, result },
@@ -175,13 +200,21 @@ export async function* supportAgent(
 
     yield { type: 'tool_result', timestamp: Date.now(), toolId, result };
 
-    const updatedWorldModel = rebuildGraph(session.events);
-    
+    // Rebuild with the tool result now included so the final synthesis
+    // prompt reflects the fully updated world state.
+    const updatedGraphContext = rebuildGraph(session.events).serialize();
+    const historyWithResult = buildConversationHistory(session.events);
+
     // Final Synthesis using the updated tool data
     const finalResponse = await generateText({
       model,
-      system: protocol.systemPrompt,
-      prompt: `User: ${userInput}\nTool Result: ${JSON.stringify(result)}\n\nSummarize for user:`,
+      system: [
+        protocol.systemPrompt,
+        `### CURRENT KNOWLEDGE_GRAPH\n` +
+        `Do NOT ask the user for information already present here.\n` +
+        updatedGraphContext,
+      ].filter(Boolean).join('\n\n'),
+      prompt: `${historyWithResult}\n\nBased on the above, summarize the situation for the user.`,
       temperature: supportAgentConfig.temperature
     });
 
