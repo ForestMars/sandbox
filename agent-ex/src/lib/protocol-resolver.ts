@@ -8,6 +8,7 @@ import { readFileSync } from 'fs';
 import { join } from 'path';
 import { entityLookupTool, resolutionTools } from '@/tools/order-tools';
 import { style } from '@/agents/style/';
+import { logger } from '@/logger';
 
 // 1. PATH CONFIGURATION
 // Ensure this matches your actual project structure (e.g., /src/agents/skills)
@@ -66,7 +67,7 @@ export function resolveProtocol(graphContext: string, activeDomain?: string) {
       const fullPath = join(SKILLS_DIR, selection.skillPath);
       skillContent = readFileSync(fullPath, 'utf-8');
     } catch (error) {
-      console.error(`[PROTOCOL_ERROR] Failed to load skill at ${selection.skillPath}:`, error);
+      logger.error(`[PROTOCOL_ERROR] Failed to load skill at ${selection.skillPath}:`, error);
     }
   }
 

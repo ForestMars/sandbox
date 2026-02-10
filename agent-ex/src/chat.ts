@@ -46,7 +46,7 @@ export async function startChat() {
           steps.push(step);
           
           if (DEBUG) {
-            console.log(`\n[${step.type.toUpperCase()}]`, formatStep(step));
+            logger.debug(`\n[${step.type.toUpperCase()}]`, formatStep(step));
           }
 
           if (step.type === 'final') {
@@ -54,7 +54,7 @@ export async function startChat() {
           }
         }
 
-        console.log(`\nAgent: ${finalText}\n`);
+        logger.info(`\nAgent: ${finalText}\n`);
 
         if (DEBUG) {
           logger.debug(`[DEBUG] Total steps: ${steps.length}`);

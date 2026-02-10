@@ -1,4 +1,5 @@
 import { supportAgent } from '../src/agents/support-agent';
+import { logger } from '../src/logger';
 
 // Focused smoke test: confirm requesting invoice #12345 returns a natural-language
 // response (not a raw tool-call JSON) and contains expected information from the
@@ -17,25 +18,25 @@ async function runSmokeTest() {
     }
   }
 
-  console.log('User:', input);
-  console.log('Agent Final:', finalText);
+  logger.info('User:', input);
+  logger.info('Agent Final:', finalText);
 
   // Validate the final response is natural language and contains expected info
   const looksLikeToolJson = /^\s*\{\s*"tool"/i.test(finalText.trim());
   const containsExpected = /Shipped|Processing|Not Found|NotFound|deliveryDate|12345/i.test(finalText);
 
   if (looksLikeToolJson) {
-    console.error('SMOKE TEST FAIL: agent returned raw tool-call JSON instead of a natural-language response');
+    logger.error('SMOKE TEST FAIL: agent returned raw tool-call JSON instead of a natural-language response');
     process.exit(2);
   }
 
   if (!containsExpected) {
-    console.error('SMOKE TEST FAIL: final response did not contain expected order information');
+    logger.error('SMOKE TEST FAIL: final response did not contain expected order information');
     process.exit(3);
   }
 
-  console.log('SMOKE TEST PASS');
+  logger.info('SMOKE TEST PASS');
   process.exit(0);
 }
 
-runSmokeTest().catch(e => { console.error(e); process.exit(1); });
+runSmokeTest().catch(e => { logger.error(e); process.exit(1); });

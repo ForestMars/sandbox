@@ -14,6 +14,7 @@ import { rebuildGraph } from '@/lib/graph-reducer';
 import type { AgentStep, AgentConfig, AgentSession, AgentEvent } from '@/types/agent-types';
 import { resolveProtocol } from '@/lib/protocol-resolver';
 import { CONTEXT_ANCHOR } from '@/agents/config';
+import { logger } from '@/logger';
 
 // --- CONFIGURATION ---
 const DEFAULT_MODEL = 'qwen2.5:7b'; // AGENT_MODEL
@@ -92,7 +93,7 @@ export async function* supportAgent(
   // Use the central brain we built to decide how to act.
   const protocol = resolveProtocol(graphContext, session.activeDomain);
 
-  console.log(`===========================[ROUTER] Engaging ${protocol.name} protocol.`);
+  logger.info(`===========================[ROUTER] Engaging ${protocol.name} protocol.`);
 
   yield { 
     type: 'thinking', 
@@ -100,11 +101,11 @@ export async function* supportAgent(
     message: 'Consulting internal knowledge graph...' 
   };
 
-  console.log(`[DEBUG] Protocol System Prompt Length: ${protocol.systemPrompt?.length}`);
-  console.log(`[DEBUG] Full System Prompt Sample: "${protocol.systemPrompt?.substring(0, 100)}..."`);
-  console.log(`[DEBUG] EVENT_LOG_LENGTH: ${session.events.length}`);
-  console.log(`[DEBUG] RECENT_EVENTS: ${JSON.stringify(session.events.slice(-2))}`);
-  console.log(`[DEBUG] GRAPH_CONTEXT_SENT: """\n${graphContext}\n"""`);
+  logger.debug(`[DEBUG] Protocol System Prompt Length: ${protocol.systemPrompt?.length}`);
+  logger.debug(`[DEBUG] Full System Prompt Sample: "${protocol.systemPrompt?.substring(0, 100)}..."`);
+  logger.debug(`[DEBUG] EVENT_LOG_LENGTH: ${session.events.length}`);
+  logger.debug(`[DEBUG] RECENT_EVENTS: ${JSON.stringify(session.events.slice(-2))}`);
+  logger.debug(`[DEBUG] GRAPH_CONTEXT_SENT: """\n${graphContext}\n"""`);
 
   // INFERENCE: Call LLM with instructions and the serialized Graph State.
   // Prompt ordering matters for small models — place behavioral instructions
@@ -139,9 +140,9 @@ export async function* supportAgent(
   });
 
   const text = response.text.trim();
-  console.log(`\n[DEBUG] LLM Raw Output (Text Content): """\n${text}\n"""\n`);
+  logger.debug(`\n[DEBUG] LLM Raw Output (Text Content): """\n${text}\n"""\n`);
   if (response.toolCalls.length > 0) {
-    console.log(`\n[DEBUG] @@@@@@ Native Tool Calls Found:`, JSON.stringify(response.toolCalls, null, 2));
+    logger.debug(`\n[DEBUG] @@@@@@ Native Tool Calls Found:`, JSON.stringify(response.toolCalls, null, 2));
   }
 
   // TOOL CALL EXTRACTION
@@ -219,8 +220,8 @@ export async function* supportAgent(
       temperature: supportAgentConfig.temperature
     });
 
-    console.log('[DEBUG] ToolCalls found:', response.toolCalls);
-    console.log('[DEBUG] Raw Text found:', response.text);
+    logger.debug('[DEBUG] ToolCalls found:', response.toolCalls);
+    logger.debug('[DEBUG] Raw Text found:', response.text);
 
     yield { type: 'final', timestamp: Date.now(), text: finalResponse.text };
   } else {
