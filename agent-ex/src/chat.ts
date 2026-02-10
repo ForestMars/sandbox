@@ -16,12 +16,10 @@ const DEBUG = true;
 /**
  * Main chat loop logic, exported for integration testing.
  * The readline interface is created inside the function to allow for 
- * clean mocking and to prevent top-level side effects during testing.
+ * clean mocking and to prevent top-level sidffects during testing.
  */
-export async function startChat() {
-  console.log(`Loaded model: ${supportAgentModelSpec}\n`);
-  logger.debug({ model: supportAgentModelSpec.model }, '>>> LOGGER_CHECK: Chat starting up');
-  logger.debug({ model: supportAgentModelSpec.model }, 'Chat session initializing');
+export async function startChat() { 
+  logger.debug(`Loaded model: ${supportAgentModelSpec}\n`);
   const rl = readline.createInterface({ input, output });
 
   // Initialize the global workspace. This lives outside the loop so it persists across multiple turns.
@@ -59,13 +57,13 @@ export async function startChat() {
         console.log(`\nAgent: ${finalText}\n`);
 
         if (DEBUG) {
-          console.log(`[DEBUG] Total steps: ${steps.length}`);
-          console.log(`[DEBUG] Step sequence: ${steps.map(s => s.type).join(' → ')}\n`);
+          logger.debug(`[DEBUG] Total steps: ${steps.length}`);
+          logger.debug(`[DEBUG] Step sequence: ${steps.map(s => s.type).join(' → ')}\n`);
         }
 
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
-        console.error('Error in agent execution:', errorMessage);
+        logger.error('Error in agent execution:', errorMessage);
       }
     }
   } finally {
@@ -103,7 +101,7 @@ function formatStep(step: AgentStep): string {
  */
 if (import.meta.main) {
   startChat().catch((err) => {
-    console.error('Fatal CLI Error:', err);
+    logger.error('Fatal CLI Error:', err);
     process.exit(1);
   });
 }
