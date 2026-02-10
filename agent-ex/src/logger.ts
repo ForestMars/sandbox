@@ -1,15 +1,17 @@
-/**
- * @file logger.ts
- * @description Centralized logging configuration using Pino. 
- * Provides a consistent logging interface across the application.
- */
-import pino from 'pino';
-import destination from 'pino.destination';  // Note: Correct import/helper
+// src/logger.ts
+import { pino } from 'pino';
+import pretty from 'pino-pretty';
+
+// Default to development if NODE_ENV is anything other than 'production'
+const isDev = process.env.NODE_ENV !== 'production';
+
+const stream = isDev ? pretty({
+  colorize: true,
+  levelFirst: true,
+  translateTime: 'SYS:standard',
+  ignore: 'pid,hostname'
+}) : pino.destination({ dest: './app.log', sync: false });
 
 export const logger = pino({
-  level: process.env.LOG_LEVEL || 'info',
-  transport: {
-    target: 'pino-pretty',
-    options: { colorize: true }
-  }
-}, destination('/var/log/app.log'));
+  level: isDev ? 'debug' : 'info'
+}, stream);

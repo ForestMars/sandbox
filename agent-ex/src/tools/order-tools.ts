@@ -1,4 +1,12 @@
+/**
+ * @file order-tools.ts
+ * @description Tools for looking up order and entity status in the central Oracle database.
+ */
+import { pino } from 'pino';
 import { z } from 'zod';
+
+import { logger } from '@/logger'; // Assuming logger.ts is in the same dir
+
 // If you have a specific Tool type in your types, keep it, 
 // but AI SDK usually expects this schema:
 
@@ -14,6 +22,8 @@ export const entityLookupTool = {
   execute: async ({ entityId }: { entityId: string }) => {
     // Normalize ID
     const id = entityId.replace(/^#/, '');
+
+    logger.info({ entityId: id }, '[LOGGER] Executing Oracle entity lookup');
     
     const mockOrders: Record<string, any> = {
       '12345': { status: 'Shipped', deliveryDate: '2026-02-10' },
@@ -33,6 +43,7 @@ export const entityLookupTool = {
       };
     }
 
+    logger.debug({ entityId: id, status: result.status }, '[LOGGER]Entity lookup successful');
     return {
       ...result,
       resolutionState: 'RESOLVED'

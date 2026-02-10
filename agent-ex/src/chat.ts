@@ -3,11 +3,13 @@
  * @description Main entry point for the Customer Support Agent CLI.
  * Handles user input via readline and orchestrates the supportAgent generator.
  */
-
-import { supportAgent, supportAgentModelSpec } from './agents/support-agent';
 import * as readline from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
+import { z } from 'zod';
+
+import { logger } from '@/logger'; // Assuming logger.ts is in the same dir
 import type { AgentStep } from './types/agent-types';
+import { supportAgent, supportAgentModelSpec } from './agents/support-agent';
 
 const DEBUG = true;
 
@@ -18,6 +20,8 @@ const DEBUG = true;
  */
 export async function startChat() {
   console.log(`Loaded model: ${supportAgentModelSpec}\n`);
+  logger.debug({ model: supportAgentModelSpec }, '>>> LOGGER_CHECK: Chat starting up');
+  logger.debug({ model: supportAgentModelSpec }, 'Chat session initializing');
   const rl = readline.createInterface({ input, output });
 
   // Initialize the global workspace. This lives outside the loop so it persists across multiple turns.
