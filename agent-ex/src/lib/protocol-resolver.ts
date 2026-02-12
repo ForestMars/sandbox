@@ -10,6 +10,7 @@ import { entityLookupTool, resolutionTools } from '@/tools/order-tools';
 import { style } from '@/agents/style/';
 import { logger } from '@/logger';
 import { Protocol } from '@/domain/expertise.types';
+import type { ExpertStrategy, ExpertiseResolverPort } from '@/domain/expertise.types';
 
 // 1. PATH CONFIGURATION
 // Ensure this matches your actual project structure (e.g., /src/agents/skills)
@@ -40,40 +41,48 @@ export const Registry: Record<string, Protocol> = {
 
 /**
  * resolveProtocol
- * The core "Brain" of Capability Discovery.
+ * Core 🧠 for Capability Discovery.
  */
-export function resolveProtocol(graphContext: string, activeDomain?: string) {
-  // Logic Plane: Determine which protocol to engage
-  let selection = Registry.default;
+// Implement the ExpertiseResolverPort so this module can be injected
+export const ProtocolResolver: ExpertiseResolverPort = {
+  resolve(graphContext: string): ExpertStrategy {
+    // Logic Plane: Determine which protocol to engage
+    let selection = Registry.default;
 
-  if (graphContext.includes('UNRESOLVED_CONFLICT')) {
-    selection = Registry.resolution;
-  } else if (activeDomain && Registry[activeDomain]) {
-    selection = Registry[activeDomain];
-  }
-
-  // Implementation Plane: Load the actual markdown content lazily
-  let skillContent = "";
-  // Agent default has no specific skill. 
-  if (selection.skillPath && selection.skillPath.trim() !== "") {
-    try {
-      const fullPath = join(SKILLS_DIR, selection.skillPath);
-      skillContent = readFileSync(fullPath, 'utf-8');
-    } catch (error) {
-      logger.error(`[PROTOCOL_ERROR] Failed to load skill at ${selection.skillPath}:`, error);
+    if (graphContext.includes('UNRESOLVED_CONFLICT')) {
+      selection = Registry.resolution;
     }
+
+    // Implementation Plane: Load the actual markdown content lazily
+    let skillContent = "";
+    if (selection.skillPath && selection.skillPath.trim() !== "") {
+      try {
+        const fullPath = join(SKILLS_DIR, selection.skillPath);
+        skillContent = readFileSync(fullPath, 'utf-8');
+      } catch (error) {
+        logger.error(`[PROTOCOL_ERROR] Failed to load skill at ${selection.skillPath}:`, error);
+      }
+    }
+
+    const systemPrompt = [
+      style,
+      selection.styleOverride || "",
+      skillContent ? "## OPERATIONAL PROTOCOL" : "",
+      skillContent
+    ].filter(Boolean).join('\n\n');
+
+    return {
+      key: selection.key || 'default',
+      skillPath: selection.skillPath,
+      tools: selection.tools,
+      rules: selection.styleOverride || "",
+      systemPrompt,
+      name: selection.name
+    };
   }
+};
 
-  // Avengers Assemble
-  const systemPrompt = [
-    style, 
-    selection.styleOverride || "", 
-    skillContent ? "## OPERATIONAL PROTOCOL" : "",
-    skillContent
-  ].filter(Boolean).join('\n\n');
-
-  return {
-    ...selection,
-    systemPrompt
-  };
+// Backwards-compatible helper
+export function resolveProtocol(graphContext: string) {
+  return ProtocolResolver.resolve(graphContext);
 }
