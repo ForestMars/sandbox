@@ -1,7 +1,7 @@
 {
-  "name": "Sup Agent",
+  "name": "'Sup?",
   "type": "module",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "workspaces": [
     "packages/domain",
     "packages/agents",
@@ -11,7 +11,7 @@
     ],
   "main": "index.js",
   "scripts": {
-    "chat": "bun src/chat.ts",
+    "chat": "bun apps/cli/chat.ts",
     "agent:test": "bun tests/test-agent.ts",
     "test": "bun test ./tests/e2e/e2e.test.ts",
     "tests": "bun test ./tests/**/*.test.ts",
