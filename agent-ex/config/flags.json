@@ -1,3 +1,6 @@
 {
-  "style": "efficient"
+  "style": "efficient",
+  "efficient-style": {
+    "enabled": true
+  }
 }

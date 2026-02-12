@@ -1,3 +1,4 @@
+const DEBUG = true;
 /**
  * @file chat.ts
  * @description Main entry point for the Customer Support Agent CLI.
@@ -15,7 +16,7 @@ import { ProtocolResolver } from '@lib/protocol-resolver';
 import { adapters } from '@tools';
 import { JsonFileProvider } from '@infra/adapters/JsonFileProvider';
 
-const DEBUG = true;
+const { OutputAdapters } = await import('@agents/adapters/output-adapters');
 
 const providers = [];
 if (process.env.POSTHOG_API_KEY) {
@@ -33,6 +34,9 @@ await OpenFeature.setProviderAndWait(multiProvider);
 
 const fflags = OpenFeature.getClient();
 
+const activeAdapters = [];
+
+
 /**
  * Main chat loop logic, exported for integration testing.
  * The readline interface is created inside the function to allow for 
@@ -40,6 +44,16 @@ const fflags = OpenFeature.getClient();
  */
 export async function startChat() { 
   logger.debug(`Loaded model: ${supportAgentModelSpec}\n`);
+
+  const activeAdapters = (await Promise.all(
+    OutputAdapters.map(async (adapter) => 
+      await fflags.getBooleanValue(adapter.flagName, false) ? adapter.wrapper : null
+    )
+  )).filter(Boolean);
+
+  console.log('Active adapters:', activeAdapters.length); // Add this
+  console.log('OutputAdapters:', OutputAdapters); // Add this
+
   const rl = readline.createInterface({ input, output });
 
   // Initialize the global workspace. This lives outside the loop so it persists across multiple turns.
@@ -49,53 +63,61 @@ export async function startChat() {
   };
 
   try {
-    while (true) {
-      const userInput = await rl.question('You: ');
-      
-      // Allow user to exit the loop
-      if (userInput.toLowerCase() === 'exit') {
-        break;
-      }
-
-      try {
-        const steps: AgentStep[] = [];
-        let finalText = '';
-
-        // Consume the generator from the support agent
-        for await (const step of supportAgent(userInput, session, { 
-          resolver: ProtocolResolver, 
-          tools: adapters, 
-          flags: fflags
-          })) {
-          steps.push(step);
-          
-          if (DEBUG) {
-            logger.debug(`\n[${step.type.toUpperCase()}]`, formatStep(step));
-          }
-
-          if (step.type === 'final') {
-            finalText = step.text;
-          }
-        }
-
-        logger.info(`\nAgent: ${finalText}\n`);
-
-        if (DEBUG) {
-          logger.debug(`[DEBUG] Total steps: ${steps.length}`);
-          logger.debug(`[DEBUG] Step sequence: ${steps.map(s => s.type).join(' → ')}\n`);
-        }
-
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        logger.error('Error in agent execution:', errorMessage);
-      }
+  while (true) {
+    const userInput = await rl.question('You: ');
+    
+    // Allow user to exit the loop
+    if (userInput.toLowerCase() === 'exit') {
+      break;
     }
-  } finally {
-    // Ensure the terminal interface is released
-    rl.close();
+
+    try {
+      const steps: AgentStep[] = [];
+      let finalText = '';
+
+      // Create base generator
+      let generator = supportAgent(userInput, session, { 
+        resolver: ProtocolResolver, 
+        tools: adapters
+      });
+
+      // Wrap with active adapters
+      for (const adapterFn of activeAdapters) {
+        generator = adapterFn(generator);
+      }
+
+      // Consume the wrapped generator
+      for await (const step of generator) {
+        steps.push(step);
+        
+        if (DEBUG) {
+          logger.debug(`\n[${step.type.toUpperCase()}]`, formatStep(step));
+        }
+
+        if (step.type === 'final') {
+          finalText = step.text;
+        }
+      }
+
+      logger.info(`\nAgent: ${finalText}\n`);
+
+      if (DEBUG) {
+        logger.debug(`[DEBUG] Total steps: ${steps.length}`);
+        logger.debug(`[DEBUG] Step sequence: ${steps.map(s => s.type).join(' → ')}\n`);
+      }
+
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.error('Error in agent execution:', errorMessage);
+      console.error('Full error:', error);
+      console.error('Stack:', error instanceof Error ? error.stack : 'No stack');
+    }
+  }
+} finally {
+  // Ensure the terminal interface is released
+  rl.close();
   }
 }
-
 /**
  * Format an AgentStep for debug output in the terminal.
  * @param step The step to format
@@ -126,6 +148,9 @@ function formatStep(step: AgentStep): string {
 if (import.meta.main) {
   startChat().catch((err) => {
     logger.error('Fatal CLI Error:', err);
+    // Panic errors can't be logged. 
+    console.error('Full error:', err); 
+    console.error('Stack trace:', err.stack); 
     process.exit(1);
   });
 }
