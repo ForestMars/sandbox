@@ -1,22 +1,22 @@
 /**
- * @file support-agent.ts
+ * @file /src/agents/support-agent.ts
  * @description Event-Sourced Graph-Based Support Agent.
  */
-
 import { generateText } from 'ai';
 import { ollama } from 'ai-sdk-ollama';
-import { entityLookupTool } from '@/tools/order-tools';
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { z } from 'zod';
-import { rebuildGraph } from '@/lib/graph-reducer';
-import type { AgentStep, AgentConfig, AgentSession, AgentEvent } from '@/types/agent-types';
-import { resolveProtocol } from '@/lib/protocol-resolver';
-import { CONTEXT_ANCHOR } from '@/agents/config';
 
-// --- CONFIGURATION ---
-const DEFAULT_MODEL = 'qwen2.5:7b';
+//import type { AgentStep, AgentConfig, AgentSession, AgentEvent } from '@types/agent-types';
+import type { ExpertiseResolverPort, ToolAdapterPort } from '@domain/expertise.types';
+import { rebuildGraph } from '@lib/graph-reducer';
+import { logger } from '@infra/logger';
+import { CONTEXT_ANCHOR } from '@agents/config';
+
+const DEFAULT_MODEL = 'qwen2.5:7b'; // AGENT_MODEL
+const FACTUTUM_MODEL = 'qwen2.5:1.5b'; // Helper model for tool calls and retrieval-augmented steps. 
 const TEMPERATURE = 0; 
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -27,7 +27,7 @@ const supportAgentConfig: AgentConfig = {
   model: process.env.SUPPORT_AGENT_MODEL || DEFAULT_MODEL,
   instructions,
   temperature: TEMPERATURE,
-  tools: [entityLookupTool]
+  tools: []
 };
 
 const toolCallSchema = z.object({
@@ -35,10 +35,8 @@ const toolCallSchema = z.object({
   entityId: z.string().or(z.number()).transform(v => String(v))
 });
 
-// --- HELPERS ---
-
 /**
- * Reconstruct a human-readable conversation history from the event log.
+ * (PROJECTION) Reconstruct a human-readable conversation history from the event log.
  * This is what gives the LLM a coherent "memory" of the conversation —
  * structured graph state alone is not enough for the model to resolve
  * pronoun/entity references across turns.
@@ -65,7 +63,7 @@ function buildConversationHistory(events: AgentEvent[]): string {
 export async function* supportAgent(
   userInput: string,
   session: AgentSession,
-  opts?: { client?: any }
+  opts?: { client?: any; resolver?: ExpertiseResolverPort; tools?: Record<string, ToolAdapterPort> }
 ): AsyncGenerator<AgentStep, void, unknown> {
 
   if (!session) throw new Error("No session provided to Agent.");
@@ -73,9 +71,10 @@ export async function* supportAgent(
 
   const model = opts?.client || ollama(supportAgentConfig.model);
 
-  // BROADCAST: Initialize and record the User Update to the Data Plane.
-  // NOTE: We push to the event log BEFORE calling rebuildGraph so that
-  // the current user message is visible to the router and world model.
+  /** BROADCAST: Initialize and record the User Update to the Data Plane.
+   * NOTE: We push to the event log BEFORE calling rebuildGraph so that
+   * the current user message is visible to the router and world model.
+   */
   const userEvent: AgentEvent = { 
     type: 'USER_UPDATE', 
     payload: { text: userInput }, 
@@ -83,15 +82,16 @@ export async function* supportAgent(
   };
   session.events.push(userEvent);
 
-  // REDUCR: Build the World Model from the append-only log.
-  // This allows the agent to "remember" failures across devices.
+  /** REDUCR: Build the World Model from the append-only log.
+   * This allows the agent to "remember" failures across devices.
+   */
   const worldModel = rebuildGraph(session.events);
   const graphContext = worldModel.serialize();
 
   // Use the central brain we built to decide how to act.
-  const protocol = resolveProtocol(graphContext, session.activeDomain);
+  const protocol = opts?.resolver?.resolve(graphContext) ?? { key: 'default', name: 'General Support', skillPath: '', tools: [], systemPrompt: '' };
 
-  console.log(`===========================[ROUTER] Engaging ${protocol.name} protocol.`);
+  logger.info(`[ROUTER] Engaging ${protocol.name} protocol.`);
 
   yield { 
     type: 'thinking', 
@@ -99,17 +99,19 @@ export async function* supportAgent(
     message: 'Consulting internal knowledge graph...' 
   };
 
-  console.log(`[DEBUG] Protocol System Prompt Length: ${protocol.systemPrompt?.length}`);
-  console.log(`[DEBUG] Full System Prompt Sample: "${protocol.systemPrompt?.substring(0, 100)}..."`);
-  console.log(`[DEBUG] EVENT_LOG_LENGTH: ${session.events.length}`);
-  console.log(`[DEBUG] RECENT_EVENTS: ${JSON.stringify(session.events.slice(-2))}`);
-  console.log(`[DEBUG] GRAPH_CONTEXT_SENT: """\n${graphContext}\n"""`);
+  logger.debug(`[DEBUG] Protocol System Prompt Length: ${protocol.systemPrompt?.length}`);
+  logger.debug(`[DEBUG] Full System Prompt Sample: "${protocol.systemPrompt?.substring(0, 100)}..."`);
+  logger.debug(`[DEBUG] EVENT_LOG_LENGTH: ${session.events.length}`);
+  logger.debug(`[DEBUG] RECENT_EVENTS: ${JSON.stringify(session.events.slice(-2))}`);
+  logger.debug(`[DEBUG] GRAPH_CONTEXT_SENT: """\n${graphContext}\n"""`);
 
-  // INFERENCE: Call LLM with instructions and the serialized Graph State.
-  // Prompt ordering matters for small models — place behavioral instructions
-  // before the data they govern, and gate the graph with an explicit instruction
-  // so the model treats it as authoritative memory, not just metadata.
-  const systemPrompt = [
+  /** NFERENCE: Call LLM with instructions and the serialized Graph State.
+   * Prompt ordering matters for small models — place behavioral instructions
+   * before the data they govern, and gate the graph with an explicit instruction
+   * so the model treats it as authoritative memory, not just metadata.
+   * If you're metaphorically inclined, it maps to past present future. 
+   */
+    const systemPrompt = [
     instructions,           // Constitution — who you are, non-negotiables
     protocol.systemPrompt,  // What to do RIGHT NOW — close to the data it governs
     CONTEXT_ANCHOR,         // How to interpret what follows
@@ -129,6 +131,20 @@ export async function* supportAgent(
     ? `${conversationHistory}\nUser: ${userInput}`
     : userInput;
 
+ /**
+ * Executes generative request and logs precise inference metrics.
+ * * @async
+ * @name executeInference
+ * @param {string} systemPrompt - The system-level instructions.
+ * @param {string} fullPrompt - The user-provided prompt.
+ * @returns {Promise<Object>} The response from the generative model.
+ * * @note Token counts are calculated using a characters-to-tokens heuristic (1 token ≈ 4 chars).
+ * @see {@link logger} for 'inference_complete' event structure.
+ */
+  const prompt = systemPrompt + '\n\n' + fullPrompt;
+  const inputTokens = Math.ceil(prompt.length / 4);
+  const startTime = performance.now();
+
   const response = await generateText({
     model,
     system: systemPrompt,
@@ -137,11 +153,24 @@ export async function* supportAgent(
     temperature: supportAgentConfig.temperature
   });
 
+  const inferenceLatencyMs = Math.round(performance.now() - startTime);
+  const outputTokens = response.text ? Math.ceil(response.text.length / 4) : 0;
+
   const text = response.text.trim();
-  console.log(`\n[DEBUG] LLM Raw Output (Text Content): """\n${text}\n"""\n`);
+  logger.debug(`\n[DEBUG] LLM Raw Output (Text Content): """\n${text}\n"""\n`);
   if (response.toolCalls.length > 0) {
-    console.log(`\n[DEBUG] @@@@@@ Native Tool Calls Found:`, JSON.stringify(response.toolCalls, null, 2));
+    logger.debug(`\n[DEBUG] @@@@@@ Native Tool Calls Found:`, JSON.stringify(response.toolCalls, null, 2));
   }
+
+   logger.info({
+    // cacheHit: false,
+    inputTokens,          
+    outputTokens,
+    latencyMs: inferenceLatencyMs,  // Acktual wall time
+    model: supportAgentConfig.model,
+    temperature: supportAgentConfig.temperature,
+    toolCalls: response.toolCalls?.length || 0
+  }, 'inference_complete');
 
   // TOOL CALL EXTRACTION
   // Priority 1: Native tool calls from the AI SDK
@@ -187,8 +216,12 @@ export async function* supportAgent(
 
     yield { type: 'tool_call', timestamp: Date.now(), toolId, parameters: { entityId } };
 
-    // Execute the tool (The "Oracle" call)
-    const result = await entityLookupTool.execute({ entityId });
+    // Execute the tool via injected tool adapters
+    const toolAdapter = opts?.tools?.[toolId];
+    if (!toolAdapter) {
+      throw new Error(`No tool adapter provided for ${toolId}`);
+    }
+    const result = await (toolAdapter as any).execute?.({ entityId });
 
     // BROADCAST tool result to data plane.
     // This is key to preventing endless loops on re-hydration.
@@ -218,8 +251,8 @@ export async function* supportAgent(
       temperature: supportAgentConfig.temperature
     });
 
-    console.log('[DEBUG] ToolCalls found:', response.toolCalls);
-    console.log('[DEBUG] Raw Text found:', response.text);
+    logger.debug('[DEBUG] ToolCalls found:', response.toolCalls);
+    logger.debug('[DEBUG] Raw Text found:', response.text);
 
     yield { type: 'final', timestamp: Date.now(), text: finalResponse.text };
   } else {

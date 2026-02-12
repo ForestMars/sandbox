@@ -4,7 +4,7 @@
  */
 
 import { MemoryGraph } from './memory-graph';
-import type { AgentEvent } from '@/types/agent-types';
+import type { AgentEvent } from '@types/agent-types';
 
 export function rebuildGraph(history: AgentEvent[]): MemoryGraph {
   const graph = new MemoryGraph();

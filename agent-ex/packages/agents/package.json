@@ -1,0 +1,5 @@
+{ 
+  "name": "@sup/agents", 
+  "version": "0.0.1", 
+  "dependencies": { "@sup/domain": "workspace:*" }  // dependency inversion inversion
+}

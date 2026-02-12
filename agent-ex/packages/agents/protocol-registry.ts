@@ -2,14 +2,9 @@
  * @file protocol-registry.ts
  * @description Central registry for agent protocols, defining skill paths, tools, and priorities.
  */
-import { style } from '@/agents/style'; // Now in the right place
+import { style } from './style'; // Now in the right place
 import { billingTools, resolutionTools, baseTools } from '@/tools';
-
-export interface Protocol {
-  skillPath: string;
-  tools: any[]; // Use your Tool definition type here
-  priority: number;
-}
+import { Protocol } from '@/domain/expertise.types';
 
 export const ProtocolRegistry: Record<string, Protocol> = {
   'resolution': {
