@@ -2,8 +2,8 @@
 {
   "compilerOptions": {
     "strict": true,
-    "composite": true,            // keep composite for project references
-    "noEmit": false,              // Must be false for composite to function
+    "composite": true,            // Keep composite for project references
+    "noEmit": false,              // (Must be false for composite to function)
     "declaration": true,          // Generates the .d.ts files for isolation
     "declarationMap": true,       // Allows "Go to Definition" to work across layers
     "emitDeclarationOnly": true,  // Prevents .js files from being created
@@ -20,18 +20,20 @@
     "allowSyntheticDefaultImports": true,
     "forceConsistentCasingInFileNames": true,
     "types": ["bun-types"],
-    "baseUrl": ".",
+    "baseUrl": "packages",
     "files": [],
-    "references": [
-      { "path": "./packages/domain" },
-      { "path": "./packages/agents" },
-      { "path": "./packages/tools" },
-      { "path": "./packages/lib" }
-    ],
-    "paths": {                      // This should be removed for production grade code. 
-      "@/*": ["./*"]
+     "paths": {                      // This should be removed for production grade code. 
+        "@*": ["./*"]
     }
   },
+    "references": [
+      { "path": "./packages/agents" },
+      { "path": "./packages/domain" },
+      { "path": "./packages/infra" },
+      { "path": "./packages/lib" },
+      { "path": "./packages/tools" }
+    ],
   "include": ["apps/**/*", "packages/**/*"],
   "exclude": ["node_modules"]
 }
+

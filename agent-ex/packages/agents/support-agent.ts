@@ -8,13 +8,13 @@ import { readFileSync } from 'fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { z } from 'zod';
-import { rebuildGraph } from '@/lib/graph-reducer';
-import type { AgentStep, AgentConfig, AgentSession, AgentEvent } from '@/types/agent-types';
-import type { ExpertiseResolverPort, ToolAdapterPort } from '@/domain/expertise.types';
-import { CONTEXT_ANCHOR } from '@/agents/config';
-import { logger } from '../infra/logger';
 
-// --- CONFIGURATION ---
+//import type { AgentStep, AgentConfig, AgentSession, AgentEvent } from '@types/agent-types';
+import type { ExpertiseResolverPort, ToolAdapterPort } from '@domain/expertise.types';
+import { rebuildGraph } from '@lib/graph-reducer';
+import { logger } from '@infra/logger';
+import { CONTEXT_ANCHOR } from '@agents/config';
+
 const DEFAULT_MODEL = 'qwen2.5:7b'; // AGENT_MODEL
 const FACTUTUM_MODEL = 'qwen2.5:1.5b'; // Helper model for tool calls and retrieval-augmented steps. 
 const TEMPERATURE = 0; 
@@ -35,10 +35,8 @@ const toolCallSchema = z.object({
   entityId: z.string().or(z.number()).transform(v => String(v))
 });
 
-// --- HELPERS ---
-
 /**
- * Reconstruct a human-readable conversation history from the event log.
+ * (PROJECTION) Reconstruct a human-readable conversation history from the event log.
  * This is what gives the LLM a coherent "memory" of the conversation —
  * structured graph state alone is not enough for the model to resolve
  * pronoun/entity references across turns.
@@ -73,9 +71,10 @@ export async function* supportAgent(
 
   const model = opts?.client || ollama(supportAgentConfig.model);
 
-  // BROADCAST: Initialize and record the User Update to the Data Plane.
-  // NOTE: We push to the event log BEFORE calling rebuildGraph so that
-  // the current user message is visible to the router and world model.
+  /** BROADCAST: Initialize and record the User Update to the Data Plane.
+   * NOTE: We push to the event log BEFORE calling rebuildGraph so that
+   * the current user message is visible to the router and world model.
+   */
   const userEvent: AgentEvent = { 
     type: 'USER_UPDATE', 
     payload: { text: userInput }, 
@@ -83,8 +82,9 @@ export async function* supportAgent(
   };
   session.events.push(userEvent);
 
-  // REDUCR: Build the World Model from the append-only log.
-  // This allows the agent to "remember" failures across devices.
+  /** REDUCR: Build the World Model from the append-only log.
+   * This allows the agent to "remember" failures across devices.
+   */
   const worldModel = rebuildGraph(session.events);
   const graphContext = worldModel.serialize();
 
@@ -105,12 +105,13 @@ export async function* supportAgent(
   logger.debug(`[DEBUG] RECENT_EVENTS: ${JSON.stringify(session.events.slice(-2))}`);
   logger.debug(`[DEBUG] GRAPH_CONTEXT_SENT: """\n${graphContext}\n"""`);
 
-  // INFERENCE: Call LLM with instructions and the serialized Graph State.
-  // Prompt ordering matters for small models — place behavioral instructions
-  // before the data they govern, and gate the graph with an explicit instruction
-  // so the model treats it as authoritative memory, not just metadata.
-  // If you're metaphorically inclined, it maps to past present future. 
-  const systemPrompt = [
+  /** NFERENCE: Call LLM with instructions and the serialized Graph State.
+   * Prompt ordering matters for small models — place behavioral instructions
+   * before the data they govern, and gate the graph with an explicit instruction
+   * so the model treats it as authoritative memory, not just metadata.
+   * If you're metaphorically inclined, it maps to past present future. 
+   */
+    const systemPrompt = [
     instructions,           // Constitution — who you are, non-negotiables
     protocol.systemPrompt,  // What to do RIGHT NOW — close to the data it governs
     CONTEXT_ANCHOR,         // How to interpret what follows
@@ -133,6 +134,7 @@ export async function* supportAgent(
  /**
  * Executes generative request and logs precise inference metrics.
  * * @async
+ * @name executeInference
  * @param {string} systemPrompt - The system-level instructions.
  * @param {string} fullPrompt - The user-provided prompt.
  * @returns {Promise<Object>} The response from the generative model.
