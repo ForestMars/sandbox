@@ -20,11 +20,12 @@
     "allowSyntheticDefaultImports": true,
     "forceConsistentCasingInFileNames": true,
     "types": ["bun-types"],
-    "baseUrl": "packages",
     "files": [],
-     "paths": {                      // This should be removed for production grade code. 
+     "paths": {                     // This should be removed for production grade code. 
         "@*": ["./*"]
-    }
+    },
+    "baseUrl": "packages"           // This one also is a bit of a hack that's not ideal for production. 
+
   },
     "references": [
       { "path": "./packages/agents" },

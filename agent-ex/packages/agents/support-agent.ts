@@ -14,6 +14,7 @@ import type { ExpertiseResolverPort, ToolAdapterPort } from '@domain/expertise.t
 import { rebuildGraph } from '@lib/graph-reducer';
 import { logger } from '@infra/logger';
 import { CONTEXT_ANCHOR } from '@agents/config';
+import { OutputPort } from '@domain';
 
 const DEFAULT_MODEL = 'qwen2.5:7b'; // AGENT_MODEL
 const FACTUTUM_MODEL = 'qwen2.5:1.5b'; // Helper model for tool calls and retrieval-augmented steps. 
