@@ -1,13 +1,7 @@
 {
   "name": "Sup Agent",
   "type": "module",
-  "version": "0.0.2",
-  "workspaces": [
-    "src/domain",
-    "src/agents",
-    "src/tools",
-    "src/lib"
-    ],
+  "version": "1.0.0",
   "main": "index.js",
   "scripts": {
     "chat": "bun src/chat.ts",
