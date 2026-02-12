@@ -1,25 +1,37 @@
+
 {
   "compilerOptions": {
+    "strict": true,
+    "composite": true,            // keep composite for project references
+    "noEmit": false,              // Must be false for composite to function
+    "declaration": true,          // Generates the .d.ts files for isolation
+    "declarationMap": true,       // Allows "Go to Definition" to work across layers
+    "emitDeclarationOnly": true,  // Prevents .js files from being created
     "lib": ["ESNext", "dom"],
     "module": "esnext",
     "target": "esnext",
     "moduleResolution": "bundler",
     "moduleDetection": "force",
     "allowImportingTsExtensions": true,
-    "noEmit": true,
-    "strict": true,
     "downlevelIteration": true,
     "skipLibCheck": true,
     "jsx": "react-jsx",
+    "allowJs": true,
     "allowSyntheticDefaultImports": true,
     "forceConsistentCasingInFileNames": true,
-    "allowJs": true,
     "types": ["bun-types"],
     "baseUrl": ".",
-    "paths": {
-      "@/*": ["./packages/*"]
+    "files": [],
+    "references": [
+      { "path": "./packages/domain" },
+      { "path": "./packages/agents" },
+      { "path": "./packages/tools" },
+      { "path": "./packages/lib" }
+    ],
+    "paths": {                      // This should be removed for production grade code. 
+      "@/*": ["./*"]
     }
   },
-  "include": ["src/**/*"],
+  "include": ["apps/**/*", "packages/**/*"],
   "exclude": ["node_modules"]
 }

@@ -7,7 +7,7 @@ import * as readline from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
 import { z } from 'zod';
 
-import { logger } from '@/logger';
+import { logger } from '../../packages/infra/logger';
 import type { AgentStep } from '@/types/agent-types';
 import { supportAgent, supportAgentModelSpec } from '@/agents/support-agent';
 import { ProtocolResolver } from '@/lib/protocol-resolver';

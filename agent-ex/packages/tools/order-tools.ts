@@ -5,7 +5,7 @@
 import { pino } from 'pino';
 import { z } from 'zod';
 
-import { logger } from '@/logger'; // Assuming logger.ts is in the same dir
+import { logger } from '../infra/logger';
 
 // If you have a specific Tool type in your types, keep it, 
 // but AI SDK usually expects this schema:

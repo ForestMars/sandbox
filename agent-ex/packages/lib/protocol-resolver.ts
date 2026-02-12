@@ -8,7 +8,7 @@ import { readFileSync } from 'fs';
 import { join } from 'path';
 import { entityLookupTool, resolutionTools } from '@/tools/order-tools';
 import { style } from '@/agents/style/';
-import { logger } from '@/logger';
+import { logger } from '../infra/logger';
 import { Protocol } from '@/domain/expertise.types';
 import type { ExpertStrategy, ExpertiseResolverPort } from '@/domain/expertise.types';
 

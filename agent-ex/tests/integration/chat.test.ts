@@ -7,8 +7,8 @@ import { test, expect, spyOn, describe, beforeEach, afterEach, mock as bunMock }
 import * as readline from 'node:readline/promises';
 
 // Using @ alias for F500-standard architecture
-import * as agentModule from '@/agents/support-agent';
-import { startChat } from '@/chat';
+import * as agentModule from '../../packages/agents/support-agent';
+import { startChat } from '../../apps/cli/chat';
 
 describe('Chat CLI Logic', () => {
   

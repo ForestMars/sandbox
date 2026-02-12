@@ -12,7 +12,7 @@ import { rebuildGraph } from '@/lib/graph-reducer';
 import type { AgentStep, AgentConfig, AgentSession, AgentEvent } from '@/types/agent-types';
 import type { ExpertiseResolverPort, ToolAdapterPort } from '@/domain/expertise.types';
 import { CONTEXT_ANCHOR } from '@/agents/config';
-import { logger } from '@/logger';
+import { logger } from '../infra/logger';
 
 // --- CONFIGURATION ---
 const DEFAULT_MODEL = 'qwen2.5:7b'; // AGENT_MODEL

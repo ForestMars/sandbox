@@ -3,7 +3,7 @@
  * @description Unit tests for agent response styles.
  */
 import { test, expect } from 'bun:test';
-import { formatToolResult } from '@/agents/style';
+import { formatToolResult } from '../../packages/agents/style';
 
 test('friendly style summarizes order tool result', () => {
   const friendly = formatToolResult('friendly', { id: 'entityLookupTool', description: 'Lookup entity' }, { status: 'Shipped', deliveryDate: '2026-02-10' }, '#12345');
