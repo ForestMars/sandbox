@@ -7,9 +7,11 @@ import * as readline from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
 import { z } from 'zod';
 
-import { logger } from '@/logger'; // Assuming logger.ts is in the same dir
-import type { AgentStep } from './types/agent-types';
-import { supportAgent, supportAgentModelSpec } from './agents/support-agent';
+import { logger } from '@/logger';
+import type { AgentStep } from '@/types/agent-types';
+import { supportAgent, supportAgentModelSpec } from '@/agents/support-agent';
+import { ProtocolResolver } from '@/lib/protocol-resolver';
+import { adapters } from '@/tools';
 
 const DEBUG = true;
 
@@ -42,7 +44,7 @@ export async function startChat() {
         let finalText = '';
 
         // Consume the generator from the support agent
-        for await (const step of supportAgent(userInput, session)) {
+        for await (const step of supportAgent(userInput, session, { resolver: ProtocolResolver, tools: adapters })) {
           steps.push(step);
           
           if (DEBUG) {

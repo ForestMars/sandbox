@@ -1,0 +1,5 @@
+{ 
+  "name": "@sup/agents", 
+  "version": "1.0.0", 
+  "dependencies": { "@sup/domain": "workspace:*" } 
+}

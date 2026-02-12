@@ -6,6 +6,8 @@ import type { AgentSession, AgentStep } from '@/types/agent-types';
 import { supportAgent } from '@/agents/support-agent';
 import { formatToolResult } from '@/lib/tool-formatter';
 import { featureFlags } from '@/lib/feature-flags';
+import { ProtocolResolver } from '@/lib/protocol-resolver';
+import { adapters } from '@/tools';
 
 export async function* flaggedSupportAgent(
   userInput: string,
@@ -23,6 +25,8 @@ export async function* flaggedSupportAgent(
   
   const agentOpts = {
     ...opts,
+    resolver: ProtocolResolver,
+    tools: adapters,
     formatter: flags.style 
       ? formatToolResult
       : (s, t, r, i) => JSON.stringify(r),
