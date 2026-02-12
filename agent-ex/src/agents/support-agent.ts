@@ -4,14 +4,13 @@
  */
 import { generateText } from 'ai';
 import { ollama } from 'ai-sdk-ollama';
-import { entityLookupTool } from '@/tools/order-tools';
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { z } from 'zod';
 import { rebuildGraph } from '@/lib/graph-reducer';
 import type { AgentStep, AgentConfig, AgentSession, AgentEvent } from '@/types/agent-types';
-import { resolveProtocol } from '@/lib/protocol-resolver';
+import type { ExpertiseResolverPort, ToolAdapterPort } from '@/domain/expertise.types';
 import { CONTEXT_ANCHOR } from '@/agents/config';
 import { logger } from '@/logger';
 
@@ -28,7 +27,7 @@ const supportAgentConfig: AgentConfig = {
   model: process.env.SUPPORT_AGENT_MODEL || DEFAULT_MODEL,
   instructions,
   temperature: TEMPERATURE,
-  tools: [entityLookupTool]
+  tools: []
 };
 
 const toolCallSchema = z.object({
@@ -66,7 +65,7 @@ function buildConversationHistory(events: AgentEvent[]): string {
 export async function* supportAgent(
   userInput: string,
   session: AgentSession,
-  opts?: { client?: any }
+  opts?: { client?: any; resolver?: ExpertiseResolverPort; tools?: Record<string, ToolAdapterPort> }
 ): AsyncGenerator<AgentStep, void, unknown> {
 
   if (!session) throw new Error("No session provided to Agent.");
@@ -90,7 +89,7 @@ export async function* supportAgent(
   const graphContext = worldModel.serialize();
 
   // Use the central brain we built to decide how to act.
-  const protocol = resolveProtocol(graphContext, session.activeDomain);
+  const protocol = opts?.resolver?.resolve(graphContext) ?? { key: 'default', name: 'General Support', skillPath: '', tools: [], systemPrompt: '' };
 
   logger.info(`[ROUTER] Engaging ${protocol.name} protocol.`);
 
@@ -215,8 +214,12 @@ export async function* supportAgent(
 
     yield { type: 'tool_call', timestamp: Date.now(), toolId, parameters: { entityId } };
 
-    // Execute the tool (The "Oracle" call)
-    const result = await entityLookupTool.execute({ entityId });
+    // Execute the tool via injected tool adapters
+    const toolAdapter = opts?.tools?.[toolId];
+    if (!toolAdapter) {
+      throw new Error(`No tool adapter provided for ${toolId}`);
+    }
+    const result = await (toolAdapter as any).execute?.({ entityId });
 
     // BROADCAST tool result to data plane.
     // This is key to preventing endless loops on re-hydration.

@@ -1,5 +1,6 @@
 import { supportAgent } from '../src/agents/support-agent';
 import { logger } from '../src/logger';
+import { entityLookupTool } from '../src/tools/order-tools';
 
 // Focused smoke test: confirm requesting invoice #12345 returns a natural-language
 // response (not a raw tool-call JSON) and contains expected information from the
@@ -8,7 +9,14 @@ import { logger } from '../src/logger';
 
 async function runSmokeTest() {
   const input = 'We need to know the status of invoice #12345';
-  const gen = supportAgent(input);
+  const tools = {
+    'entity-status-lookup': entityLookupTool,
+    'invoice-status-lookup': entityLookupTool,
+    'invoice-status': entityLookupTool,
+    'order-lookup': entityLookupTool,
+  } as any;
+
+  const gen = supportAgent(input, undefined, { tools });
 
   let finalText = '';
   for await (const step of gen) {

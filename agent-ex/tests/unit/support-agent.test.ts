@@ -1,5 +1,6 @@
 import { test, expect } from 'bun:test';
 import { supportAgent } from '@/agents/support-agent';
+import { entityLookupTool } from '@/tools/order-tools';
 
 const TEST_TIMEOUT = 90000; 
 
@@ -28,7 +29,16 @@ test('agent calls entityLookupTool when LLM triggers tool path', async () => {
   const mockToolTrigger = JSON.stringify({ tool: 'invoice-status', entityId: '12345' });
   const mock = makeMockClient(mockToolTrigger);
   
-  const gen = supportAgent('Please check order #12345', { client: mock });
+  const tools = {
+    'invoice-status': entityLookupTool,
+    'invoice-status-lookup': entityLookupTool,
+    'order-lookup': entityLookupTool,
+    'entity-status-lookup': entityLookupTool,
+    'entity-lookup': entityLookupTool,
+  } as any;
+
+  const session = { id: 'test-session', events: [] } as any;
+  const gen = supportAgent('Please check order #12345', session, { client: mock, tools });
   
   let toolCallSeen = false;
   let finalText = '';
@@ -53,7 +63,12 @@ test('agent returns direct text when no tool invocation needed', async () => {
   const greeting = 'Hello — I am your assistant';
   const mock = makeMockClient(greeting);
   
-  const gen = supportAgent('Say hello', { client: mock });
+  const tools = {
+    'entity-status-lookup': entityLookupTool,
+  } as any;
+
+  const session = { id: 'test-session-2', events: [] } as any;
+  const gen = supportAgent('Say hello', session, { client: mock, tools });
   
   let steps: string[] = [];
   let finalText = '';
@@ -77,11 +92,16 @@ test('agent remembers order #999 when context is added in second turn', async ()
   const session: AgentSession = { id: 'test-amnesia-fix', events: [] };
   
   // Turn 1: Initial query
-  const turn1Gen = supportAgent('Where is #999?', session);
+  const tools = {
+    'entity-status-lookup': entityLookupTool,
+    'order-lookup': entityLookupTool,
+  } as any;
+
+  const turn1Gen = supportAgent('Where is #999?', session, { tools });
   for await (const _ of turn1Gen) {} // Let it run and fail tool lookup
 
   // Turn 2: Add context (The "January 18" turn)
-  const turn2Gen = supportAgent('I ordered it on January 18', session);
+  const turn2Gen = supportAgent('I ordered it on January 18', session, { tools });
   let turn2Final = '';
   for await (const step of turn2Gen) {
     if (step.type === 'final') turn2Final = step.text;
