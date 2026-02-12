@@ -5,6 +5,7 @@
  */
 import * as readline from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
+import { OpenFeature, MultiProvider, FirstSuccessfulStrategy } from '@openfeature/server-sdk';
 import { z } from 'zod';
 
 import { logger } from '@infra/logger';
@@ -12,8 +13,25 @@ import type { AgentStep } from './types/agent-types';
 import { supportAgent, supportAgentModelSpec } from '@agents/support-agent';
 import { ProtocolResolver } from '@lib/protocol-resolver';
 import { adapters } from '@tools';
+import { JsonFileProvider } from '@infra/adapters/JsonFileProvider';
 
 const DEBUG = true;
+
+const providers = [];
+if (process.env.POSTHOG_API_KEY) {
+  const { PostHogProvider } = await import('@tapico/node-openfeature-posthog');
+  const { PostHog } = await import('posthog-node');
+  const posthogClient = new PostHog(process.env.POSTHOG_API_KEY, {
+    host: process.env.POSTHOG_HOST || 'https://app.posthog.com'
+  });
+  providers.push({ provider: new PostHogProvider({ posthogClient }) });
+}
+providers.push({ provider: new JsonFileProvider('../../config/flags.json') });
+
+const multiProvider = new MultiProvider(providers, new FirstSuccessfulStrategy());
+await OpenFeature.setProviderAndWait(multiProvider);
+
+const fflags = OpenFeature.getClient();
 
 /**
  * Main chat loop logic, exported for integration testing.
@@ -44,7 +62,11 @@ export async function startChat() {
         let finalText = '';
 
         // Consume the generator from the support agent
-        for await (const step of supportAgent(userInput, session, { resolver: ProtocolResolver, tools: adapters })) {
+        for await (const step of supportAgent(userInput, session, { 
+          resolver: ProtocolResolver, 
+          tools: adapters, 
+          flags: fflags
+          })) {
           steps.push(step);
           
           if (DEBUG) {

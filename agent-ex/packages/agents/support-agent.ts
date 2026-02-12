@@ -16,6 +16,7 @@ import { logger } from '@infra/logger';
 import { CONTEXT_ANCHOR } from '@agents/config';
 import { OutputPort } from '@domain';
 
+
 const DEFAULT_MODEL = 'qwen2.5:7b'; // AGENT_MODEL
 const FACTUTUM_MODEL = 'qwen2.5:1.5b'; // Helper model for tool calls and retrieval-augmented steps. 
 const TEMPERATURE = 0; 
@@ -64,7 +65,12 @@ function buildConversationHistory(events: AgentEvent[]): string {
 export async function* supportAgent(
   userInput: string,
   session: AgentSession,
-  opts?: { client?: any; resolver?: ExpertiseResolverPort; tools?: Record<string, ToolAdapterPort> }
+  opts?: {  
+    // output: OutputPort; 
+    client?: LanguageModel; // AI SDK type, can be a mock for testing.  
+    resolver?: ExpertiseResolverPort; 
+    tools?: Record<string, ToolAdapterPort> 
+    }
 ): AsyncGenerator<AgentStep, void, unknown> {
 
   if (!session) throw new Error("No session provided to Agent.");
