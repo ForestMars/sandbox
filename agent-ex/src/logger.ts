@@ -1,49 +1,65 @@
 /**
  * @file logger.ts
- * @description Centralized logging configuration using pino, with Bun compatibility.
- * Configured to use direct streams in Bun (Dev) and optimized JSON in Node (Prod).
+ * @description O11y 2.0 Logger using AsyncLocalStorage for automatic context tracking.
+ * Configured to use direct streams in Bun (Dev) and optimized JSON transport in Prod.
  */
 import pino from 'pino';
+import { AsyncLocalStorage } from 'node:async_hooks';
 
-// Don't do this, btw: 
-// const isBun = process.env.BUN_RUNTIME === '1' || process.argv[0]?.includes('bun');
-// The above is unreliable. 'typeof Bun' is best-by-test robust check for the global runtime.
-const isBun = typeof Bun !== 'undefined';
+/**
+ * @file logger.ts
+ * @description Bun-native O11y 2.0 Logger. 
+ */
+
+export const pinoStorage = new AsyncLocalStorage<Record<string, any>>();
 
 const MODEL_NAME = process.env.MODEL_NAME || 'qwen2.5:7b';
+const isTerminal = process.stdout.isTTY;
 
-let logger;
+let loggerInstance: pino.Logger;
 
-if (isBun) {
-    // DEV/BUN: Main-thread stream for instant terminal feedback
-    // Dynamic require prevents production crashes if pino-pretty is a devDependency
-    // Don't use require which can cause type & bundle issues. Bun supports top-level await:
-    const { default: pretty } = await import('pino-pretty');
-    
-    logger = pino({
-        level: 'debug',
-        base: { 
-          model: MODEL_NAME,
-          runtime: 'bun' 
-        }
-      },
-      pretty({
-        colorize: true,
-        levelFirst: true,
-        translateTime: 'SYS:standard',
-        ignore: 'pid,hostname,model,runtime' // Keeps "Joe" out of your terminal
-      })
-    );
+if (isTerminal) {
+  // DEV/BUN: Main-thread stream for instant terminal feedback.
+  // Using require here ensures pino-pretty isn't a blocking ESM import.
+  const pretty = require('pino-pretty')({
+    colorize: true,
+    levelFirst: true,
+    singleLine: false,
+    translateTime: 'SYS:standard',
+    ignore: 'pid,hostname',
+  });
+
+  loggerInstance = pino({
+    level: 'debug',
+    base: { model: MODEL_NAME, runtime: 'bun' }
+  }, pretty);
 } else {
-    // NODE/PRODUCTION: High-performance JSON output
-    logger = pino({
-      level: 'info',
-      base: { 
-        model: MODEL_NAME,
-        runtime: 'node'
-      }
-      // No transport here = direct raw JSON to stdout (best for Datadog)
-    });
+  // PRODUCTION/BUN: High-performance JSON output.
+  // In Bun, we omit transport here to keep it simple and blazing fast.
+  loggerInstance = pino({
+    level: 'info',
+    base: { model: MODEL_NAME, runtime: 'bun' }
+  });
 }
 
-export { logger };
+// The Proxy ensures context-awareness across the Bun async runtime
+export const logger = new Proxy(loggerInstance, {
+  get(target, prop, receiver) {
+    const store = pinoStorage.getStore();
+    const value = Reflect.get(target, prop, receiver);
+
+    if (typeof value === 'function' && store && typeof prop === 'string' && ['debug', 'info', 'warn', 'error', 'fatal'].includes(prop)) {
+      return value.bind(target.child(store));
+    }
+    return value;
+  }
+});
+
+export function handleRequest(ctx: { requestId: string; userId?: string }) {
+  pinoStorage.run({ 
+    requestId: ctx.requestId, 
+    userId: ctx.userId ?? 'anonymous' 
+  }, () => {
+    logger.info({ component: 'http', route: '/chat' }, 'Request received');
+  });
+}

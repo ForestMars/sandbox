@@ -1,7 +1,9 @@
-// This module defines the style guidelines and formatting logic for tool results in the agent's responses.
-// The style can be 'friendly', 'formal', 'raw', or 'none', and the formatting adapts accordingly.
-// This allows the agent to present tool results in a way that matches the desired tone and user experience.  
-
+/**
+ * @file /src/agents/style/index.ts
+ * @description This module defines the style guidelines and formatting logic for tool results in the agent's responses.
+ * The style can be 'friendly', 'formal', 'raw', or 'none', and the formatting adapts accordingly.
+ * This allows the agent to present tool results in a way that matches the desired tone and user experience.  
+ */
 export const style_ = "..."
 
 export type Style = 'friendly' | 'formal' | 'raw' | 'none';

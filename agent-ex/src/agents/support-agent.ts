@@ -1,8 +1,7 @@
 /**
- * @file support-agent.ts
+ * @file /src/agents/support-agent.ts
  * @description Event-Sourced Graph-Based Support Agent.
  */
-
 import { generateText } from 'ai';
 import { ollama } from 'ai-sdk-ollama';
 import { entityLookupTool } from '@/tools/order-tools';
@@ -18,7 +17,7 @@ import { logger } from '@/logger';
 
 // --- CONFIGURATION ---
 const DEFAULT_MODEL = 'qwen2.5:7b'; // AGENT_MODEL
-const FACTUTUM_MODEL = 'qwen2.5:1.5b';
+const FACTUTUM_MODEL = 'qwen2.5:1.5b'; // Helper model for tool calls and retrieval-augmented steps. 
 const TEMPERATURE = 0; 
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -93,7 +92,7 @@ export async function* supportAgent(
   // Use the central brain we built to decide how to act.
   const protocol = resolveProtocol(graphContext, session.activeDomain);
 
-  logger.info(`===========================[ROUTER] Engaging ${protocol.name} protocol.`);
+  logger.info(`[ROUTER] Engaging ${protocol.name} protocol.`);
 
   yield { 
     type: 'thinking', 
@@ -111,6 +110,7 @@ export async function* supportAgent(
   // Prompt ordering matters for small models — place behavioral instructions
   // before the data they govern, and gate the graph with an explicit instruction
   // so the model treats it as authoritative memory, not just metadata.
+  // If you're metaphorically inclined, it maps to past present future. 
   const systemPrompt = [
     instructions,           // Constitution — who you are, non-negotiables
     protocol.systemPrompt,  // What to do RIGHT NOW — close to the data it governs
@@ -131,6 +131,19 @@ export async function* supportAgent(
     ? `${conversationHistory}\nUser: ${userInput}`
     : userInput;
 
+ /**
+ * Executes generative request and logs precise inference metrics.
+ * * @async
+ * @param {string} systemPrompt - The system-level instructions.
+ * @param {string} fullPrompt - The user-provided prompt.
+ * @returns {Promise<Object>} The response from the generative model.
+ * * @note Token counts are calculated using a characters-to-tokens heuristic (1 token ≈ 4 chars).
+ * @see {@link logger} for 'inference_complete' event structure.
+ */
+  const prompt = systemPrompt + '\n\n' + fullPrompt;
+  const inputTokens = Math.ceil(prompt.length / 4);
+  const startTime = performance.now();
+
   const response = await generateText({
     model,
     system: systemPrompt,
@@ -139,11 +152,24 @@ export async function* supportAgent(
     temperature: supportAgentConfig.temperature
   });
 
+  const inferenceLatencyMs = Math.round(performance.now() - startTime);
+  const outputTokens = response.text ? Math.ceil(response.text.length / 4) : 0;
+
   const text = response.text.trim();
   logger.debug(`\n[DEBUG] LLM Raw Output (Text Content): """\n${text}\n"""\n`);
   if (response.toolCalls.length > 0) {
     logger.debug(`\n[DEBUG] @@@@@@ Native Tool Calls Found:`, JSON.stringify(response.toolCalls, null, 2));
   }
+
+   logger.info({
+    // cacheHit: false,
+    inputTokens,          
+    outputTokens,
+    latencyMs: inferenceLatencyMs,  // Acktual wall time
+    model: supportAgentConfig.model,
+    temperature: supportAgentConfig.temperature,
+    toolCalls: response.toolCalls?.length || 0
+  }, 'inference_complete');
 
   // TOOL CALL EXTRACTION
   // Priority 1: Native tool calls from the AI SDK
