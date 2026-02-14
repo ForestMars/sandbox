@@ -17,9 +17,9 @@ async function initFlags() {
       host: "localhost",
       port: 8013,
     }));
-    console.log("🛠️ Dev Mode: Using local flagd from /config");
+    console.log("Dev Mode: Using local flagd from /config");
   } else {
-    // 🚀 PRODUCTION (The Fallback)
+    // PRODUCTION (Fallback)
     await OpenFeature.setProviderAndWait(
       new PosthogProvider({
         apiKey: Bun.env.POSTHOG_API_KEY!,
@@ -27,7 +27,7 @@ async function initFlags() {
         host: "https://us.i.posthog.com",
       })
     );
-    console.log("✅ Production Mode: Connected to PostHog");
+    console.log("Production Mode: Connected to PostHog");
   }
 }
 
