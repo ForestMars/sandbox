@@ -6,5 +6,5 @@ export interface OutputPort {
   /**
    * Dispatches an agent step to the outside world.
    */
-  dispatch(step: any): Promise<void> | void;
+  dispatch(step: any): Promise<void> | void;  //👺
 }
